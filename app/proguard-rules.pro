@@ -1,4 +1,5 @@
-﻿-keep class net.sqlcipher.** { *; }
+-keep class net.sqlcipher.** { *; }
+-keep class net.zetetic.database.sqlcipher.** { *; }
 -keep class * extends androidx.room.RoomDatabase
 -keep @androidx.room.Entity class *
 -keep class dagger.hilt.** { *; }

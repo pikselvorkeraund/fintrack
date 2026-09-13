@@ -25,30 +25,45 @@ object AppModule {
         keyManager: DbKeyManager
     ): AppDatabase {
         val passphrase = keyManager.getOrCreateKey()
-        val factory = SupportOpenHelperFactory(passphrase)
 
+        // Room.databaseBuilder().build() НЕ открывает БД — реальное
+        // открытие (и проверка пароля SQLCipher) происходит лениво при
+        // первом запросе, вне try/catch, что приводит к падению процесса.
+        // Поэтому принудительно открываем БД здесь и при ошибке
+        // пересоздаём её с нуля. Закрываем именно helper (не сам
+        // connection), иначе Room вернёт закрытое кэшированное соединение.
         return try {
-            Room.databaseBuilder(
-                context,
-                AppDatabase::class.java,
-                AppDatabase.DB_NAME
-            )
-                .openHelperFactory(factory)
-                .fallbackToDestructiveMigration()
-                .build()
+            val db = buildDatabase(context, passphrase)
+            db.openHelper.readableDatabase
+            db.openHelper.close()
+            db
         } catch (e: Exception) {
-            // Если БД не открывается - удаляем и создаём заново
             Log.e("AppModule", "DB open failed, recreating: ${e.message}")
             context.deleteDatabase(AppDatabase.DB_NAME)
-            Room.databaseBuilder(
-                context,
-                AppDatabase::class.java,
-                AppDatabase.DB_NAME
-            )
-                .openHelperFactory(factory)
-                .fallbackToDestructiveMigration()
-                .build()
+            // Ключ мог разойтись с содержимым БД — получаем новый
+            val freshPassphrase = keyManager.getOrCreateKey()
+            try {
+                val db = buildDatabase(context, freshPassphrase)
+                db.openHelper.readableDatabase
+                db.openHelper.close()
+                db
+            } catch (e2: Exception) {
+                Log.e("AppModule", "DB recreate failed: ${e2.message}")
+                throw e2
+            }
         }
+    }
+
+    private fun buildDatabase(context: Context, passphrase: ByteArray): AppDatabase {
+        val factory = SupportOpenHelperFactory(passphrase)
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            AppDatabase.DB_NAME
+        )
+            .openHelperFactory(factory)
+            .fallbackToDestructiveMigration()
+            .build()
     }
 
     @Provides

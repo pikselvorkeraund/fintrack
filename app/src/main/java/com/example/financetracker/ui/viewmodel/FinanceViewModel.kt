@@ -19,15 +19,42 @@ class FinanceViewModel @Inject constructor(private val repo: TransactionReposito
     val currency: StateFlow<Currency> = _cur
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
-    init { viewModelScope.launch { repo.getAll().collect { refresh(it) } } }
-    fun setCurrency(c: Currency) { _cur.value = c; viewModelScope.launch { repo.getAll().first().let { refresh(it) } } }
+    init {
+        viewModelScope.launch {
+            try {
+                repo.getAll().collect { refresh(it) }
+            } catch (e: Exception) {
+                // Ошибка БД не должна ронять процесс — показываем пустой дашборд
+                _ui.value = UiState(currency = _cur.value, items = emptyList())
+            }
+        }
+    }
+    fun setCurrency(c: Currency) {
+        _cur.value = c
+        viewModelScope.launch {
+            try {
+                refresh(repo.getAll().first())
+            } catch (e: Exception) {
+                _ui.value = UiState(currency = c, items = emptyList())
+            }
+        }
+    }
     private suspend fun refresh(list: List<TransactionEntity>) {
         val c = _cur.value
-        val i = repo.income(c.code); val e = repo.expense(c.code)
+        val i = try { repo.income(c.code) } catch (_: Exception) { 0.0 }
+        val e = try { repo.expense(c.code) } catch (_: Exception) { 0.0 }
         _ui.value = UiState(i, e, i - e, c, list)
     }
     fun add(amount: Double, cat: String, note: String, income: Boolean) {
-        viewModelScope.launch { repo.add(TransactionEntity(amount = amount, currencyCode = _cur.value.code, category = cat, note = note, isIncome = income)) }
+        viewModelScope.launch {
+            try {
+                repo.add(TransactionEntity(amount = amount, currencyCode = _cur.value.code, category = cat, note = note, isIncome = income))
+            } catch (_: Exception) {}
+        }
     }
-    fun remove(t: TransactionEntity) { viewModelScope.launch { repo.remove(t) } }
+    fun remove(t: TransactionEntity) {
+        viewModelScope.launch {
+            try { repo.remove(t) } catch (_: Exception) {}
+        }
+    }
 }
