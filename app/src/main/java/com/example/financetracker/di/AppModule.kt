@@ -1,6 +1,7 @@
 package com.example.financetracker.di
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Room
 import com.example.financetracker.data.local.AppDatabase
 import com.example.financetracker.data.local.TransactionDao
@@ -25,15 +26,29 @@ object AppModule {
     ): AppDatabase {
         val passphrase = keyManager.getOrCreateKey()
         val factory = SupportOpenHelperFactory(passphrase)
-        
-        return Room.databaseBuilder(
-            context,
-            AppDatabase::class.java,
-            AppDatabase.DB_NAME
-        )
-            .openHelperFactory(factory)
-            .fallbackToDestructiveMigration()
-            .build()
+
+        return try {
+            Room.databaseBuilder(
+                context,
+                AppDatabase::class.java,
+                AppDatabase.DB_NAME
+            )
+                .openHelperFactory(factory)
+                .fallbackToDestructiveMigration()
+                .build()
+        } catch (e: Exception) {
+            // Если БД не открывается - удаляем и создаём заново
+            Log.e("AppModule", "DB open failed, recreating: ${e.message}")
+            context.deleteDatabase(AppDatabase.DB_NAME)
+            Room.databaseBuilder(
+                context,
+                AppDatabase::class.java,
+                AppDatabase.DB_NAME
+            )
+                .openHelperFactory(factory)
+                .fallbackToDestructiveMigration()
+                .build()
+        }
     }
 
     @Provides
