@@ -1,35 +1,66 @@
 package com.example.financetracker.data.security
 
 import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
-class PatternLockManager @Inject constructor(@ApplicationContext private val ctx: Context) {
-    private val mk by lazy { MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build() }
+class PatternLockManager @Inject constructor(
+    @ApplicationContext private val ctx: Context
+) {
+    companion object {
+        private const val PREFS_NAME = "pattern_prefs"
+        private const val HASH_KEY = "hash"
+        private const val ATTEMPTS_KEY = "att"
+        private const val MAX_ATTEMPTS = 3
+    }
+
     private val prefs by lazy {
-        EncryptedSharedPreferences.create(ctx, "pat_prefs", mk,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM)
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
-    val isSet: Boolean get() = prefs.getString("hash", null) != null
-    val attempts: Int get() = prefs.getInt("att", 0)
-    val remaining: Int get() = (3 - attempts).coerceAtLeast(0)
+
+    val isSet: Boolean
+        get() = prefs.getString(HASH_KEY, null) != null
+
+    val attempts: Int
+        get() = prefs.getInt(ATTEMPTS_KEY, 0)
+
+    val remaining: Int
+        get() = (MAX_ATTEMPTS - attempts).coerceAtLeast(0)
+
     fun save(pattern: List<Int>) {
-        prefs.edit().putString("hash", hash(pattern)).putInt("att", 0).apply()
+        prefs.edit()
+            .putString(HASH_KEY, hash(pattern))
+            .putInt(ATTEMPTS_KEY, 0)
+            .apply()
     }
+
     fun verify(pattern: List<Int>): Boolean {
-        val stored = prefs.getString("hash", null) ?: return false
-        return if (stored == hash(pattern)) { prefs.edit().putInt("att", 0).apply(); true }
-        else { prefs.edit().putInt("att", attempts + 1).apply(); false }
+        val stored = prefs.getString(HASH_KEY, null) ?: return false
+        return if (stored == hash(pattern)) {
+            prefs.edit().putInt(ATTEMPTS_KEY, 0).apply()
+            true
+        } else {
+            prefs.edit().putInt(ATTEMPTS_KEY, attempts + 1).apply()
+            false
+        }
     }
-    fun shouldWipe(): Boolean = attempts >= 3
+
+    fun shouldWipe(): Boolean = attempts >= MAX_ATTEMPTS
+
+    fun wipeAll() {
+        // Полная очистка: удаляем паттерн, БД, зашифрованный ключ
+        prefs.edit().clear().apply()
+        ctx.deleteDatabase("finance.db")
+        ctx.getSharedPreferences("secure_prefs", Context.MODE_PRIVATE)
+            .edit().clear().apply()
+    }
+
     private fun hash(p: List<Int>): String {
-        val d = MessageDigest.getInstance("SHA-256")
-        return d.digest(p.joinToString("-").toByteArray()).joinToString("") { "%02x".format(it) }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(p.joinToString("-").toByteArray())
+        return bytes.joinToString("") { "%02x".format(it) }
     }
 }
