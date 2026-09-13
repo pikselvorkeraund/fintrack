@@ -22,7 +22,7 @@ jobs:
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
       - name: Build Release APK
         if: env.HAS_KEYSTORE == 'true'
-        run: gradle assembleRelease --no-daemon
+        run: gradle assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -30,7 +30,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       - name: Build Debug APK (fallback)
         if: env.HAS_KEYSTORE != 'true'
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g -XX:MaxMetaspaceSize=1g"
       - uses: actions/upload-artifact@v4
         with:
           name: finance-tracker-apk
