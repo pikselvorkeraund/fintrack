@@ -1,12 +1,15 @@
-﻿package com.example.financetracker.data.security
+package com.example.financetracker.data.security
+
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import dagger.hilt.android.qualifiers.ApplicationContext
 import java.security.MessageDigest
 import javax.inject.Inject
 import javax.inject.Singleton
+
 @Singleton
-class PatternLockManager @Inject constructor(private val ctx: Context) {
+class PatternLockManager @Inject constructor(@ApplicationContext private val ctx: Context) {
     private val mk by lazy { MasterKey.Builder(ctx).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build() }
     private val prefs by lazy {
         EncryptedSharedPreferences.create(ctx, "pat_prefs", mk,
