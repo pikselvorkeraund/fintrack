@@ -62,7 +62,8 @@ class PatternLockManager @Inject constructor(
             b
         }
         val salt = Base64.decode(saltB64, Base64.NO_WRAP)
-        val spec = PBEKeySpec(hash(pattern).toByteArray(Charsets.UTF_8), salt, PBKDF2_ITERATIONS, KEY_BITS)
+        // PBEKeySpec принимает char[] пароля, а не byte[]
+        val spec = PBEKeySpec(hash(pattern).toCharArray(), salt, PBKDF2_ITERATIONS, KEY_BITS)
         return SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
     }
 
