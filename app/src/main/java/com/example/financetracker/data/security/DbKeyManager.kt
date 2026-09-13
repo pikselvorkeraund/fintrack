@@ -1,4 +1,5 @@
-﻿package com.example.financetracker.data.security
+package com.example.financetracker.data.security
+
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -11,6 +12,7 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.inject.Inject
 import javax.inject.Singleton
+
 @Singleton
 class DbKeyManager @Inject constructor(private val ctx: Context) {
     private val masterKey by lazy {
@@ -21,6 +23,7 @@ class DbKeyManager @Inject constructor(private val ctx: Context) {
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
             EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM)
     }
+    
     fun getOrCreateKey(): ByteArray {
         val k = prefs.getString("key", null)
         val iv = prefs.getString("iv", null)
@@ -33,6 +36,7 @@ class DbKeyManager @Inject constructor(private val ctx: Context) {
             .putString("iv", android.util.Base64.encodeToString(i, 0)).apply()
         return newKey
     }
+    
     private fun ksKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore"); ks.load(null)
         (ks.getEntry("ft_master", null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
@@ -44,11 +48,13 @@ class DbKeyManager @Inject constructor(private val ctx: Context) {
             .setKeySize(256).build())
         return kg.generateKey()
     }
+    
     private fun wrap(key: ByteArray): Pair<ByteArray, ByteArray> {
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.ENCRYPT_MODE, ksKey())
         return Pair(c.doFinal(key), c.iv)
     }
+    
     private fun unwrap(enc: ByteArray, iv: ByteArray): ByteArray {
         val c = Cipher.getInstance("AES/GCM/NoPadding")
         c.init(Cipher.DECRYPT_MODE, ksKey(), GCMParameterSpec(128, iv))
