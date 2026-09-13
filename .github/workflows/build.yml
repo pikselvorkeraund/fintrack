@@ -3,12 +3,13 @@ name: Build APK
 on:
   push:
     branches: [ main, master ]
-  # Добавляем кнопку для ручного запуска прямо из интерфейса GitHub
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,18 +20,17 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # Устанавливаем Gradle напрямую, минуя сломанный gradlew
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
-      - name: Decode Keystore (if secrets exist)
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+      - name: Decode Keystore
+        if: env.HAS_KEYSTORE == 'true'
         run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
 
       - name: Build Release APK
-        if: ${{ secrets.KEYSTORE_BASE64 != '' }}
+        if: env.HAS_KEYSTORE == 'true'
         run: gradle assembleRelease --no-daemon
         env:
           KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
@@ -39,7 +39,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Build Debug APK (fallback)
-        if: ${{ secrets.KEYSTORE_BASE64 == '' }}
+        if: env.HAS_KEYSTORE != 'true'
         run: gradle assembleDebug --no-daemon
 
       - name: Upload APK Artifact
