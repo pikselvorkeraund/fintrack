@@ -35,9 +35,9 @@ class DbKeyManager @Inject constructor(private val ctx: Context) {
     }
     private fun ksKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore"); ks.load(null)
-        (ks.getEntry("ft_key", null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
+        (ks.getEntry("ft_master", null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
         val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        kg.init(KeyGenParameterSpec.Builder("ft_key",
+        kg.init(KeyGenParameterSpec.Builder("ft_master",
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)

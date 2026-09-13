@@ -15,7 +15,7 @@ fun LockScreen(state: LockState, onPattern: (List<Int>) -> Unit, onOk: () -> Uni
         is LockState.Setup -> "Draw pattern (min 4 dots)"
         is LockState.Enter -> "Enter pattern"
         is LockState.Error -> state.msg
-        is LockState.Wiped -> "Data wiped. Create new pattern."
+        is LockState.Wiped -> "Data wiped after 3 failed attempts. Create new pattern."
         else -> ""
     }
     Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
