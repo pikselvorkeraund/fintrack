@@ -4,9 +4,13 @@ package com.example.financetracker.ui.screens
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -20,6 +24,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.financetracker.data.model.Currency
+import com.example.financetracker.data.model.PeriodType
+import com.example.financetracker.data.model.TransactionEntity
 import com.example.financetracker.ui.locale.LocalStrings
 import com.example.financetracker.ui.locale.cat
 import com.example.financetracker.ui.viewmodel.FinanceViewModel
@@ -34,13 +40,15 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
     val ui by vm.ui.collectAsState()
     val cur by vm.currency.collectAsState()
     var dlg by remember { mutableStateOf(false) }
+    var toDelete by remember { mutableStateOf<TransactionEntity?>(null) }
+    var viewed by remember { mutableStateOf<TransactionEntity?>(null) }
     var backOnce by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val activity = LocalContext.current as Activity
 
     // Двойное нажатие Назад: первое — подсказка, повторное — выход
-    BackHandler(enabled = !dlg) {
+    BackHandler(enabled = !dlg && toDelete == null && viewed == null) {
         if (backOnce) {
             activity.finishAffinity()
         } else {
@@ -100,13 +108,59 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
                 }
             }
 
+            // Компактная статистика: чистая сумма за день/неделю/месяц/год
+            if (ui.periods.isNotEmpty()) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ui.periods.forEach { st ->
+                        Card(
+                            Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                                Text(
+                                    periodLabel(s, st.type),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                                Text(
+                                    compact(st.net),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (st.net < 0) MaterialTheme.colorScheme.error
+                                    else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            val listState = rememberLazyListState()
+            // Ленивая загрузка: при прокрутке к концу списка подгружаем
+            // следующую страницу (20 записей) от последнего загруженного id
+            LaunchedEffect(listState, ui.hasMore, ui.loadingMore) {
+                snapshotFlow {
+                    val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+                    val total = listState.layoutInfo.totalItemsCount
+                    last >= total - 3
+                }.collect { nearEnd ->
+                    if (nearEnd && ui.hasMore && !ui.loadingMore) vm.loadMore()
+                }
+            }
             LazyColumn(
-                Modifier.fillMaxSize(),
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(ui.items, key = { it.id }) { t ->
-                    Card(Modifier.fillMaxWidth()) {
+                    Card(
+                        Modifier.fillMaxWidth().clickable { viewed = t }
+                    ) {
                         Row(
                             Modifier.fillMaxWidth().padding(12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -124,14 +178,61 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
                                 fontWeight = FontWeight.Bold,
                                 color = if (t.isIncome) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                             )
-                            IconButton(onClick = { vm.remove(t) }) {
+                            IconButton(onClick = { toDelete = t }) {
                                 Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
                             }
                         }
                     }
                 }
+                if (ui.loadingMore) {
+                    item(key = "loader") {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp)
+                        }
+                    }
+                }
             }
         }
+    }
+
+    // Просмотр комментария записи (длинный текст прокручивается)
+    viewed?.let { t ->
+        AlertDialog(
+            onDismissRequest = { viewed = null },
+            title = {
+                Text("${s.cat(t.category)}: ${fmt(t.amount, Currency.fromCode(t.currencyCode))}")
+            },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(t.timestamp)),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(if (t.note.isBlank()) s.noNote else t.note)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { viewed = null }) { Text(s.close) }
+            }
+        )
+    }
+
+    // Простое подтверждение удаления
+    toDelete?.let { t ->
+        AlertDialog(
+            onDismissRequest = { toDelete = null },
+            title = { Text(s.deleteTitle) },
+            text = {
+                Text("${s.cat(t.category)}: ${fmt(t.amount, Currency.fromCode(t.currencyCode))}")
+            },
+            confirmButton = {
+                Button(onClick = { vm.remove(t); toDelete = null }) { Text(s.delete) }
+            },
+            dismissButton = { TextButton(onClick = { toDelete = null }) { Text(s.cancel) } }
+        )
     }
 
     if (dlg) {
@@ -193,3 +294,27 @@ fun AddDlg(currency: Currency, dismiss: () -> Unit, ok: (Double, String, String,
 }
 
 fun fmt(v: Double, c: Currency) = String.format("%,.2f %s", v, c.symbol)
+
+private fun periodLabel(s: com.example.financetracker.ui.locale.Strings, p: PeriodType): String =
+    when (p) {
+        PeriodType.DAY -> s.periodDay
+        PeriodType.WEEK -> s.periodWeek
+        PeriodType.MONTH -> s.periodMonth
+        PeriodType.YEAR -> s.periodYear
+        PeriodType.TOTAL -> ""
+    }
+
+/** Компактный вид суммы с суффиксами k/m: +12,4k / −48,9k / +318k */
+private fun compact(v: Double): String {
+    val a = kotlin.math.abs(v)
+    val sign = if (v < 0) "-" else "+"
+    val (num, suf) = when {
+        a >= 1_000_000 -> a / 1_000_000 to "m"
+        a >= 1_000 -> a / 1_000 to "k"
+        else -> a to ""
+    }
+    val body =
+        if (num >= 100 || num % 1.0 == 0.0) num.toLong().toString()
+        else String.format("%.1f", num).replace('.', ',')
+    return sign + body + suf
+}

@@ -3,7 +3,7 @@ package com.example.financetracker.data.local
 import android.content.Context
 import androidx.room.Room
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.first
+
 import kotlinx.coroutines.runBlocking
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import javax.inject.Inject
@@ -33,7 +33,7 @@ class DbHolder @Inject constructor(
         return try {
             // Реальный запрос через Room: неверный пароль SQLCipher
             // бросает исключение. Проверяем до публикации экземпляра.
-            runBlocking { candidate.dao().getAll().first() }
+            runBlocking { candidate.dao().count() }
             db = candidate
             true
         } catch (e: Exception) {
@@ -58,12 +58,17 @@ class DbHolder @Inject constructor(
         try { d?.close() } catch (_: Exception) {}
     }
 
-    fun dao(): TransactionDao =
-        (db ?: throw IllegalStateException("Database is locked")).dao()
+    fun db(): AppDatabase =
+        db ?: throw IllegalStateException("Database is locked")
+
+    fun dao(): TransactionDao = db().dao()
+
+    fun statDao(): StatDao = db().statDao()
 
     private fun build(passphrase: ByteArray): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, AppDatabase.DB_NAME)
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
+            .addMigrations(AppDatabase.MIGRATION_1_2)
             .fallbackToDestructiveMigration()
             .build()
 }
