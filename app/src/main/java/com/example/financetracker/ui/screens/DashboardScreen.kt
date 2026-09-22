@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -46,6 +48,7 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
     var toDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var viewed by remember { mutableStateOf<TransactionEntity?>(null) }
     var backOnce by remember { mutableStateOf(false) }
+    var balanceExpanded by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val activity = LocalContext.current as Activity
@@ -95,24 +98,43 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
                 Column(Modifier.padding(20.dp)) {
-                    Text(s.balance, style = MaterialTheme.typography.bodyMedium)
-                    Text(amountStr("", ui.balance, ui.currency, if (ui.balance < 0) MaterialTheme.colorScheme.error else IncomeGreen), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                    Spacer(Modifier.height(8.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column {
-                            Text(s.income)
-                            Text(amountStr("+", ui.income, ui.currency, IncomeGreen))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(s.balance, style = MaterialTheme.typography.bodyMedium)
+                        IconButton(onClick = { balanceExpanded = !balanceExpanded }) {
+                            Icon(
+                                if (balanceExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                        Column {
-                            Text(s.expenses)
-                            Text(amountStr("-", ui.expense, ui.currency, MaterialTheme.colorScheme.error))
+                    }
+                    if (balanceExpanded) {
+                        Text(
+                            amountStr("", ui.balance, ui.currency, if (ui.balance < 0) MaterialTheme.colorScheme.error else IncomeGreen),
+                            style = MaterialTheme.typography.headlineLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Column {
+                                Text(s.income)
+                                Text(amountStr("+", ui.income, ui.currency, IncomeGreen))
+                            }
+                            Column {
+                                Text(s.expenses)
+                                Text(amountStr("-", ui.expense, ui.currency, MaterialTheme.colorScheme.error))
+                            }
                         }
                     }
                 }
             }
 
             // Компактная статистика: чистая сумма за день/неделю/месяц/год
-            if (ui.periods.isNotEmpty()) {
+            if (balanceExpanded && ui.periods.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -338,8 +360,18 @@ private fun compact(v: Double): String {
 
 private val IncomeGreen = Color(0xFF81C784)
 
-private fun amountStr(sign: String, value: Double, c: Currency, numColor: Color) =
+/**
+ * @param sign  префикс (+/−/пустая)
+ * @param value число
+ * @param c     валюта
+ * @param numColor  цвет числа и знака
+ * @param withSymbol если true — добавить символ валюты белым (использовать только там, где он был в оригинале)
+ */
+private fun amountStr(sign: String, value: Double, c: Currency, numColor: Color, withSymbol: Boolean = true) =
     buildAnnotatedString {
-        append(sign + String.format("%,.2f", value) + " ", style = SpanStyle(color = numColor))
-        append(c.symbol, style = SpanStyle(color = Color.White))
+        val num = sign + String.format("%,.2f", value) + (if (withSymbol) " " else "")
+        append(num, style = SpanStyle(color = numColor))
+        if (withSymbol) {
+            append(c.symbol, style = SpanStyle(color = Color.White))
+        }
     }
