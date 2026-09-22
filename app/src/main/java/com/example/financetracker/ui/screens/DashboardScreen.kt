@@ -157,6 +157,21 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
                 contentPadding = PaddingValues(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                // Пустое состояние: у активной валюты ещё нет записей
+                if (ui.items.isEmpty() && !ui.loading) {
+                    item(key = "empty") {
+                        Box(
+                            Modifier.fillMaxWidth().padding(vertical = 32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                s.noRecords.replace("{CURRENCY}", ui.currency.code),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
                 items(ui.items, key = { it.id }) { t ->
                     Card(
                         Modifier.fillMaxWidth().clickable { viewed = t }
