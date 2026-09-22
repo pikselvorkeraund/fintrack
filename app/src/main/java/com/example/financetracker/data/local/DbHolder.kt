@@ -44,7 +44,7 @@ class DbHolder @Inject constructor(
 
     /**
      * Аварийное пересоздание БД (например, после обновления приложения
-     * со старой схемой шифрования). Удаляет файл и создаёт заново.
+     * со старой схемы шифрования). Удаляет файл и создаёт заново.
      */
     fun recreateWith(passphrase: ByteArray): Boolean {
         lock()
@@ -65,10 +65,12 @@ class DbHolder @Inject constructor(
 
     fun statDao(): StatDao = db().statDao()
 
+    fun accountDao(): AccountDao = db().accountDao()
+
     private fun build(passphrase: ByteArray): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, AppDatabase.DB_NAME)
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
-            .addMigrations(AppDatabase.MIGRATION_1_2)
+            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .fallbackToDestructiveMigration()
             .build()
 }

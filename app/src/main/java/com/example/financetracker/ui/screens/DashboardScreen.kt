@@ -28,6 +28,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.foundation.border
 import com.example.financetracker.data.model.Currency
 import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.TransactionEntity
@@ -40,10 +41,15 @@ import java.text.SimpleDateFormat
 import java.util.*
 
 @Composable
-fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -> Unit) {
+fun DashboardScreen(
+    vm: FinanceViewModel = hiltViewModel(),
+    onOpenSettings: () -> Unit,
+    onOpenAccounts: () -> Unit
+) {
     val s = LocalStrings.current
     val ui by vm.ui.collectAsState()
     val cur by vm.currency.collectAsState()
+    val acc by vm.account.collectAsState()
     var dlg by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var viewed by remember { mutableStateOf<TransactionEntity?>(null) }
@@ -70,7 +76,16 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
-            TopAppBar(title = { Text(s.appTitle) }, actions = {
+            TopAppBar(title = {
+                Text(
+                    acc?.name ?: s.appTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier
+                        .clickable { onOpenAccounts() }
+                        .border(1.dp, Color((acc?.color ?: 0xFF1976D2L).toULong()))
+                        .padding(4.dp)
+                )
+            }, actions = {
                 IconButton(onClick = onOpenSettings) {
                     Icon(Icons.Default.Settings, s.settings)
                 }

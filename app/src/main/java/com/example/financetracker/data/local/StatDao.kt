@@ -17,21 +17,24 @@ interface StatDao {
 
     @Query(
         "UPDATE stats SET income = income + :inc, expense = expense + :exp " +
-            "WHERE periodType = :pt AND periodKey = :pk AND currencyCode = :cur"
+            "WHERE accountId = :acc AND periodType = :pt AND periodKey = :pk AND currencyCode = :cur"
     )
-    suspend fun addDelta(pt: String, pk: String, cur: String, inc: Double, exp: Double)
+    suspend fun addDelta(acc: Int, pt: String, pk: String, cur: String, inc: Double, exp: Double)
 
     @Query(
         "SELECT COALESCE(SUM(income), 0) FROM stats " +
-            "WHERE currencyCode = :cur AND periodType = :pt AND periodKey = :pk"
+            "WHERE accountId = :acc AND currencyCode = :cur AND periodType = :pt AND periodKey = :pk"
     )
-    suspend fun periodIncome(cur: String, pt: String, pk: String): Double
+    suspend fun periodIncome(acc: Int, cur: String, pt: String, pk: String): Double
 
     @Query(
         "SELECT COALESCE(SUM(expense), 0) FROM stats " +
-            "WHERE currencyCode = :cur AND periodType = :pt AND periodKey = :pk"
+            "WHERE accountId = :acc AND currencyCode = :cur AND periodType = :pt AND periodKey = :pk"
     )
-    suspend fun periodExpense(cur: String, pt: String, pk: String): Double
+    suspend fun periodExpense(acc: Int, cur: String, pt: String, pk: String): Double
+
+    @Query("DELETE FROM stats WHERE accountId = :acc")
+    suspend fun deleteByAccount(acc: Int)
 
     @Query("DELETE FROM stats")
     suspend fun deleteAll()

@@ -39,6 +39,17 @@ data class Strings(
     val newPattern: String,
     val dbError: String,
     val exitHint: String,
+    val back: String,
+    val accounts: String,
+    val addAccount: String,
+    val accountName: String,
+    val rename: String,
+    val deleteAccount: String,
+    val deleteAccountMsg: String,
+    val currentBadge: String,
+    val errLastAccount: String,
+    val errCurrentAccount: String,
+    val errNameEmpty: String,
     val categories: Map<String, String>
 )
 
@@ -91,6 +102,17 @@ val StringsEn = Strings(
     newPattern = "New pattern",
     dbError = "Database error",
     exitHint = "Press back again to exit the app",
+    back = "Back",
+    accounts = "Accounts",
+    addAccount = "Add Account",
+    accountName = "Name",
+    rename = "Rename",
+    deleteAccount = "Delete Account",
+    deleteAccountMsg = "Delete \"%1\$s\" and all its records?",
+    currentBadge = "Current",
+    errLastAccount = "Cannot delete the last account",
+    errCurrentAccount = "Cannot delete the current account. Switch first.",
+    errNameEmpty = "Name cannot be empty",
     categories = catsEn
 )
 
@@ -129,6 +151,17 @@ val StringsRu = Strings(
     newPattern = "Новый узор",
     dbError = "Ошибка базы данных",
     exitHint = "При повторном нажатии будет выход из приложения",
+    back = "Назад",
+    accounts = "Счета",
+    addAccount = "Добавить счёт",
+    accountName = "Название",
+    rename = "Переименовать",
+    deleteAccount = "Удалить счёт",
+    deleteAccountMsg = "Удалить «%1\$s» и все его записи?",
+    currentBadge = "Текущий",
+    errLastAccount = "Нельзя удалить последний счёт",
+    errCurrentAccount = "Нельзя удалить текущий счёт. Сначала переключитесь.",
+    errNameEmpty = "Название не может быть пустым",
     categories = catsRu
 )
 

@@ -2,13 +2,17 @@ package com.example.financetracker.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.financetracker.data.model.AccountEntity
 import com.example.financetracker.data.model.Currency
 import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.TransactionEntity
 import com.example.financetracker.data.repository.TransactionRepository
+import com.example.financetracker.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -16,25 +20,62 @@ import javax.inject.Inject
 data class PeriodStat(val type: PeriodType, val net: Double)
 
 data class UiState(
-    val income: Double = 0.0, val expense: Double = 0.0,
-    val balance: Double = 0.0, val currency: Currency = Currency.RUB,
+    val income: Double = 0.0,
+    val expense: Double = 0.0,
+    val balance: Double = 0.0,
+    val currency: Currency = Currency.RUB,
     val items: List<TransactionEntity> = emptyList(),
     val periods: List<PeriodStat> = emptyList(),
-    val loading: Boolean = false, val loadingMore: Boolean = false,
+    val loading: Boolean = false,
+    val loadingMore: Boolean = false,
     val hasMore: Boolean = false
 )
 
 @HiltViewModel
-class FinanceViewModel @Inject constructor(private val repo: TransactionRepository) : ViewModel() {
+class FinanceViewModel @Inject constructor(
+    private val repo: TransactionRepository,
+    private val settings: SettingsRepository
+) : ViewModel() {
 
     companion object { const val PAGE_SIZE = 20 }
 
     private val _cur = MutableStateFlow(Currency.RUB)
     val currency: StateFlow<Currency> = _cur
+
     private val _ui = MutableStateFlow(UiState())
     val ui: StateFlow<UiState> = _ui
 
-    init { reload() }
+    /** Текущий счёт (null пока не загружен). */
+    private val _account = MutableStateFlow<AccountEntity?>(null)
+    val account: StateFlow<AccountEntity?> = _account.asStateFlow()
+
+    init {
+        reload()
+    }
+
+    /** Загружает актуальную информацию о текущем счёте. */
+    suspend fun loadAccount() {
+        // Гарантируем, что хотя бы один счёт существует
+        // (новый файл БД после recreateWith или первый запуск)
+        runCatching { repo.ensureDefaultAccount() }
+        val acc = settings.currentAccountId()
+        _account.value = runCatching { repo.listAccounts().firstOrNull { it.id == acc } }.getOrNull()
+    }
+
+    /** Переключает активный счёт: обновляет SettingsRepository + перезагружает дашборд. */
+    fun switchAccount(id: Int) {
+        settings.setCurrentAccount(id)
+        reload()
+    }
+
+    /** Переопределяет активный счёт без перезагрузки (используется из AccountsScreen). */
+    fun setAccount(id: Int) {
+        settings.setCurrentAccount(id)
+        viewModelScope.launch {
+            loadAccount()
+            reload()
+        }
+    }
 
     fun setCurrency(c: Currency) {
         if (_cur.value == c) return
@@ -42,20 +83,17 @@ class FinanceViewModel @Inject constructor(private val repo: TransactionReposito
         reload()
     }
 
-    /** Первая страница записей только активной валюты + суммы из таблицы статистики. */
+    /** Первая страница записей активного счёта + валюты + суммы из таблицы статистики. */
     fun reload() {
         viewModelScope.launch {
-            _ui.value = _ui.value.copy(loading = true)
+            loadAccount()
+            _ui.update { it.copy(loading = true) }
             val c = _cur.value
+            val acc = settings.currentAccountId()
             try {
-                val items = repo.page(c.code, 0L, PAGE_SIZE)
-                _ui.value = _ui.value.copy(
-                    items = items,
-                    hasMore = items.size >= PAGE_SIZE,
-                    loading = false
-                )
+                val items = repo.page(acc, c.code, 0L, PAGE_SIZE)
+                _ui.update { s -> s.copy(items = items, hasMore = items.size >= PAGE_SIZE, loading = false) }
             } catch (e: Exception) {
-                // Ошибка БД не должна ронять процесс — показываем пустой дашборд
                 _ui.value = UiState(currency = c, loading = false)
             }
             refreshTotals()
@@ -70,25 +108,22 @@ class FinanceViewModel @Inject constructor(private val repo: TransactionReposito
         val st = _ui.value
         if (st.loadingMore || !st.hasMore || st.items.isEmpty()) return
         viewModelScope.launch {
-            _ui.value = st.copy(loadingMore = true)
+            _ui.update { s -> s.copy(loadingMore = true) }
             try {
-                val next = repo.page(_cur.value.code, st.items.last().id, PAGE_SIZE)
-                _ui.value = _ui.value.copy(
-                    items = _ui.value.items + next,
-                    hasMore = next.size >= PAGE_SIZE,
-                    loadingMore = false
-                )
+                val next = repo.page(settings.currentAccountId(), _cur.value.code, st.items.last().id, PAGE_SIZE)
+                _ui.update { s -> s.copy(items = s.items + next, hasMore = next.size >= PAGE_SIZE, loadingMore = false) }
             } catch (_: Exception) {
-                _ui.value = _ui.value.copy(loadingMore = false)
+                _ui.update { s -> s.copy(loadingMore = false) }
             }
         }
     }
 
     private suspend fun refreshTotals() {
         val c = _cur.value
-        val i = try { repo.income(c.code) } catch (_: Exception) { 0.0 }
-        val e = try { repo.expense(c.code) } catch (_: Exception) { 0.0 }
-        _ui.value = _ui.value.copy(income = i, expense = e, balance = i - e, currency = c)
+        val acc = settings.currentAccountId()
+        val i = try { repo.income(acc, c.code) } catch (_: Exception) { 0.0 }
+        val e = try { repo.expense(acc, c.code) } catch (_: Exception) { 0.0 }
+        _ui.update { s -> s.copy(income = i, expense = e, balance = i - e, currency = c) }
         refreshPeriods()
     }
 
@@ -98,40 +133,46 @@ class FinanceViewModel @Inject constructor(private val repo: TransactionReposito
      */
     private suspend fun refreshPeriods() {
         val c = _cur.value.code
+        val acc = settings.currentAccountId()
         val now = System.currentTimeMillis()
         val list = try {
             PeriodType.entries.filter { it != PeriodType.TOTAL }.map { p ->
-                val inc = repo.periodIncome(c, p, p.keyOf(now))
-                val exp = repo.periodExpense(c, p, p.keyOf(now))
+                val inc = repo.periodIncome(acc, c, p, p.keyOf(now))
+                val exp = repo.periodExpense(acc, c, p, p.keyOf(now))
                 PeriodStat(p, inc - exp)
             }
         } catch (_: Exception) {
             emptyList()
         }
-        _ui.value = _ui.value.copy(periods = list)
+        _ui.update { s -> s.copy(periods = list) }
     }
 
     fun add(amount: Double, cat: String, note: String, income: Boolean) {
         viewModelScope.launch {
             val c = _cur.value
+            val acc = settings.currentAccountId()
             try {
                 val id = repo.add(
                     TransactionEntity(
-                        amount = amount, currencyCode = c.code,
-                        category = cat, note = note, isIncome = income
+                        accountId = acc,
+                        amount = amount,
+                        currencyCode = c.code,
+                        category = cat,
+                        note = note,
+                        isIncome = income
                     )
                 )
-                // Запись принадлежит активной валюте — добавляем в начало окна
-                _ui.value = _ui.value.copy(
-                    items = listOf(
-                        TransactionEntity(
-                            id = id, amount = amount, currencyCode = c.code,
-                            category = cat, note = note, isIncome = income
-                        )
-                    ) + _ui.value.items
-                )
-            } catch (_: Exception) {
-            }
+                _ui.update { s ->
+                    s.copy(
+                        items = listOf(
+                            TransactionEntity(
+                                id = id, accountId = acc, amount = amount,
+                                currencyCode = c.code, category = cat, note = note, isIncome = income
+                            )
+                        ) + s.items
+                    )
+                }
+            } catch (_: Exception) { }
             refreshTotals()
         }
     }
@@ -140,13 +181,10 @@ class FinanceViewModel @Inject constructor(private val repo: TransactionReposito
         viewModelScope.launch {
             try {
                 repo.remove(t)
-                _ui.value = _ui.value.copy(items = _ui.value.items.filter { it.id != t.id })
-                // Если окно опустело, но впереди ещё записи — перечитываем первую
-                // страницу; иначе просто дозагружаем до полного окна
+                _ui.update { s -> s.copy(items = s.items.filter { it.id != t.id }) }
                 if (_ui.value.items.isEmpty() && _ui.value.hasMore) reload()
                 else if (_ui.value.items.size < PAGE_SIZE && _ui.value.hasMore) loadMore()
-            } catch (_: Exception) {
-            }
+            } catch (_: Exception) { }
             refreshTotals()
         }
     }

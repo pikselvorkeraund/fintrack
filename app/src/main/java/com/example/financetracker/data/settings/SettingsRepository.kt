@@ -15,6 +15,8 @@ class SettingsRepository @Inject constructor(
     companion object {
         private const val PREFS = "settings"
         private const val LANG_KEY = "lang"
+        private const val ACCOUNT_KEY = "currentAccountId"
+        const val DEFAULT_ACCOUNT_ID = 1
     }
 
     private val prefs by lazy { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
@@ -25,8 +27,20 @@ class SettingsRepository @Inject constructor(
     )
     val lang: StateFlow<Language> = _lang
 
+    private val _currentAccount = MutableStateFlow(
+        prefs.getInt(ACCOUNT_KEY, DEFAULT_ACCOUNT_ID)
+    )
+    val currentAccount: StateFlow<Int> = _currentAccount
+
     fun setLanguage(l: Language) {
         _lang.value = l
         prefs.edit().putString(LANG_KEY, l.name).apply()
+    }
+
+    fun currentAccountId(): Int = _currentAccount.value
+
+    fun setCurrentAccount(id: Int) {
+        _currentAccount.value = id
+        prefs.edit().putInt(ACCOUNT_KEY, id).apply()
     }
 }

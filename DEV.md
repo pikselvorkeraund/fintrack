@@ -65,20 +65,22 @@ MainActivity.kt           — @AndroidEntryPoint; единственная Activ
 
 data/
   local/
-    AppDatabase.kt        — @Database v2, DAO-и, MIGRATION_1_2
+    AppDatabase.kt        — @Database v3, DAO-и, MIGRATION_1_2 + MIGRATION_2_3
     DbHolder.kt           — ленивое открытие зашифрованной БД (см. §5)
-    TransactionDao.kt     — CRUD + keyset-пагинация
-    StatDao.kt            — инкрементальные суммы по периодам
+    TransactionDao.kt     — CRUD + keyset-пагинация (по счёту + валюте)
+    StatDao.kt            — инкрементальные суммы (по счёту + периоду + валюте)
+    AccountDao.kt         — CRUD справочника счетов
   model/
     Currency.kt           — enum валют (code/symbol/displayName)
-    TransactionEntity.kt  — таблица `transactions`
-    StatEntity.kt         — PeriodType + таблица `stats` (см. §7)
+    AccountEntity.kt      — таблица `accounts` (id, name, color) + палитра из 12 цветов
+    TransactionEntity.kt  — таблица `transactions` (с accountId + индекс)
+    StatEntity.kt         — PeriodType + таблица `stats` (PK включает accountId) (см. §7)
   repository/
-    TransactionRepository.kt — бизнес-логика + транзакции (см. §6)
+    TransactionRepository.kt — бизнес-логика + транзакции + CRUD счетов (см. §6)
   security/
     PatternLockManager.kt — узор, соль, PBKDF2, счётчик попыток, вайп
   settings/
-    SettingsRepository.kt — язык (EN/RU) в SharedPreferences
+    SettingsRepository.kt — язык (EN/RU) + currentAccountId в SharedPreferences
 
 di/
   AppModule.kt            — пустой Hilt-модуль (БД ленивая, см. §5)
@@ -86,15 +88,17 @@ di/
 ui/
   components/PatternLock.kt   — Canvas-виджет 3×3 узора
   locale/AppLocale.kt         — Strings, StringsEn/Ru, LocalStrings, cat()
-  navigation/AppNavGraph.kt   — NavHost: lock → main → settings
+  navigation/AppNavGraph.kt   — NavHost: lock → main → settings / accounts
   screens/
     LockScreen.kt             — экран узора
     DashboardScreen.kt        — главный экран (см. §8)
+    AccountsScreen.kt         — CRUD-справочник счетов
     SettingsScreen.kt         — выбор языка
   theme/Theme.kt              — Material3 dark/light палитра
   viewmodel/
     LockViewModel.kt          — старт-ап/вход/вайп
     FinanceViewModel.kt       — состояние дашборда (см. §8)
+    AccountsViewModel.kt      — CRUD счетов, переключение текущего
     SettingsViewModel.kt      — обёртка языка
 ```
 
@@ -112,7 +116,9 @@ ui/
    - `startDestination = "lock"`;
    - `lock` → при `LockState.Unlocked` навигирует на `main` с `popUpTo("lock")`
      (назад на лок-экран уже нельзя);
-   - `main` (Dashboard) → кнопка настроек → `settings` → `popBackStack()`.
+   - `main` (Dashboard) → кнопка настроек → `settings` → `popBackStack()`;
+   - `main` (Dashboard) → тап по названию счёта в TopAppBar → `accounts`
+     → `popBackStack()` (возврат без смены) или `onSwitchAccount` + `popBackStack()`.
 
 Экраны получают ViewModel через `hiltViewModel()`.
 
@@ -157,18 +163,34 @@ ui/
 ## 6. Схема БД и Repository
 
 ### Таблицы
+`accounts` ([`AccountEntity`](app/src/main/java/com/example/financetracker/data/model/AccountEntity.kt)):
+`id` (PK, autoGenerate), `name` (TEXT), `color` (INTEGER, ARGB как Long).
+Палитра из 12 фиксированных цветов (`AccountEntity.PALETTE`).
+При создании нового счёта `nextColor()` выбирает первый свободный.
+
 `transactions` ([`TransactionEntity`](app/src/main/java/com/example/financetracker/data/model/TransactionEntity.kt)):
-`id` (PK, autoGenerate), `amount`, `currencyCode`, `category`, `note`,
-`isIncome`, `timestamp`.
+`id` (PK, autoGenerate), `accountId` (Int, NOT NULL), `amount`, `currencyCode`,
+`category`, `note`, `isIncome`, `timestamp`. Индекс `(accountId, currencyCode, id)`.
 
 `stats` ([`StatEntity`](app/src/main/java/com/example/financetracker/data/model/StatEntity.kt)):
-PK = составной `(periodType, periodKey, currencyCode)`, поля `income`, `expense`.
+PK = составной `(accountId, periodType, periodKey, currencyCode)`,
+поля `income`, `expense`.
 
 ### Миграции
 [`AppDatabase`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt)
-имеет `version = 2` и `MIGRATION_1_2`: создаёт `stats` и заполняет её
-агрегацией из `transactions` по всем периодам. `DbHolder.build()` регистрирует
-миграцию через `addMigrations(AppDatabase.MIGRATION_1_2)` плюс
+имеет `version = 3`:
+- `MIGRATION_1_2` — создаёт `stats` (без `accountId`) и заполняет её
+  агрегацией из `transactions` по всем периодам.
+- `MIGRATION_2_3` — вводит многоучётность:
+  1. Создаёт таблицу `accounts`, вставляет дефолтный счёт `id=1`
+     (`"Мои финансы"`, первый цвет палитры).
+  2. `ALTER TABLE transactions ADD COLUMN accountId INTEGER NOT NULL DEFAULT 1`
+     + создание индекса `(accountId, currencyCode, id)`.
+  3. Пересоздаёт `stats` с `accountId` в составном PK,
+     переносит данные (все со счётом 1) из `transactions`.
+
+`DbHolder.build()` регистрирует обе миграции:
+`addMigrations(MIGRATION_1_2, MIGRATION_2_3)` плюс
 `fallbackToDestructiveMigration()` как страховку.
 
 **Правило добавления новой версии схемы:**
@@ -181,17 +203,22 @@ PK = составной `(periodType, periodKey, currencyCode)`, поля `incom
 
 ### TransactionRepository
 [`data/repository/TransactionRepository.kt`](app/src/main/java/com/example/financetracker/data/repository/TransactionRepository.kt)
-— единственная точка работы с БД из UI-слоя:
-- `page(cur, lastId, limit)` — keyset-страница только активной валюты;
-- `income/expense(cur)` — читают строку `TOTAL` из `stats` (точечно по PK);
-- `periodIncome/periodExpense(cur, pt, key)` — сумма за конкретный период;
+— единственная точка работы с БД из UI-слоя. Все методы принимают `acc`
+(активный `accountId`) как первый параметр:
+- `page(acc, cur, lastId, limit)` — keyset-страница активного счёта и валюты;
+- `income/expense(acc, cur)` — читают строку `TOTAL` из `stats` (точечно по PK);
+- `periodIncome/periodExpense(acc, cur, pt, key)` — сумма за конкретный период;
 - `add(t)`/`remove(t)`/`wipe()` — обёрнуты в `db.db().withTransaction { }`
   (Room из `room-ktx`), внутри которых вставка/удаление транзакции И
   дельта-обновление `stats` (`applyDelta`) атомарны;
 - `applyDelta(t, sign)` — для каждого `PeriodType` делает `insertIfAbsent`
-  (создаёт нулевую строку периода при необходимости) и `addDelta`
-  (`UPDATE ... SET income = income + :inc ...`). `sign = +1` при добавлении,
-  `-1` при удалении. Так статистика всегда согласована с транзакциями.
+  (создаёт нулевую строку периода по `accountId` при необходимости) и `addDelta`
+  (`UPDATE ... SET income = income + :inc ... WHERE accountId = ...`).
+  `sign = +1` при добавлении, `-1` при удалении.
+- **CRUD счетов**: `addAccount(name)` — вставляет в `accounts` с авто-цветом;
+  `renameAccount(id, name)` — переименование; `deleteAccount(id)` — каскад
+  (transactions + stats + accounts) в `withTransaction`;
+  `listAccounts()` — список всех; `accountCount()` — количество.
 
 ---
 
@@ -215,19 +242,35 @@ PK = составной `(periodType, periodKey, currencyCode)`, поля `incom
 [`ui/viewmodel/FinanceViewModel.kt`](app/src/main/java/com/example/financetracker/ui/viewmodel/FinanceViewModel.kt)
 — `UiState` (income, expense, balance, currency, items, periods, loading,
 loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
-- `reload()` — первая страница (`page(cur,0,20)`) + `refreshTotals()`.
-- `loadMore()` — следующая страница от `items.last().id`, с защитой от гонок
-  (`loadingMore`/`hasMore`/пустой список).
-- `refreshTotals()` → `refreshPeriods()` — перечитывает TOTAL и 4 периода.
-- `add(...)` — пишет в БД, затем **вставляет запись в начало окна без
-  перечитывания** (используя возвращённый `id`).
-- `remove(t)` — удаляет, фильтрует из окна, при опустошении окна перечитывает/
-  дозагружает.
-- Все обращения к БД в `try/catch`; ошибка → безопасное пустое состояние
-  (БД не роняет процесс).
+Дополнительно: `account: StateFlow<AccountEntity?>` — текущий счёт.
+- `loadAccount()` — читает `currentAccountId` из `SettingsRepository`,
+  подгружает `AccountEntity` из `repo.listAccounts()`.
+- `switchAccount(id)` / `setAccount(id)` — переключает активный счёт через
+  `SettingsRepository.setCurrentAccount(id)` + `reload()`.
+- `reload()` — `loadAccount()` → первая страница
+  (`repo.page(acc, cur, 0, 20)`) + `refreshTotals()`.
+- `loadMore()` — следующая страница от `items.last().id`, с защитой от гонок.
+- `refreshTotals()` → `refreshPeriods()` — перечитывает TOTAL и 4 периода
+  (все запросы к `stats` по `accountId + currencyCode`).
+- `add(...)` — пишет в БД (с `accountId` из `SettingsRepository`),
+  затем **вставляет запись в начало окна без перечитывания**.
+- `remove(t)` — удаляет, фильтрует из окна, при опустошении окна перечитывает.
+- Все обращения к БД в `try/catch`; ошибка → безопасное пустое состояние.
+
+### AccountsViewModel
+[`ui/viewmodel/AccountsViewModel.kt`](app/src/main/java/com/example/financetracker/ui/viewmodel/AccountsViewModel.kt)
+— `accounts: StateFlow<List<AccountEntity>>`, `error: StateFlow<String?>`.
+- `add(name)` — валидация (не пусто), `repo.addAccount()`, `refresh()`.
+- `rename(id, name)` — валидация, `repo.renameAccount()`.
+- `delete(id)` — валидация: нельзя удалить последний счёт
+  (`errLastAccount`) или текущий (`errCurrentAccount`);
+  при успехе — `repo.deleteAccount(id)` (каскад).
+- `select(id)` — `settings.setCurrentAccount(id)`.
+- `clearError()` — сброс кода ошибки.
 
 ### DashboardScreen
 [`ui/screens/DashboardScreen.kt`](app/src/main/java/com/example/financetracker/ui/screens/DashboardScreen.kt)
+признаки: `vm: FinanceViewModel`, `onOpenSettings`, `onOpenAccounts`.
 структура Column:
 1. Карточка баланса — содержит заголовок «Баланс» и кнопку `IconButton`
    (`ExpandMore`/`ExpandLess`) для сворачивания/разворачивания. В свернутом
@@ -244,15 +287,29 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
    подстановкой `{CURRENCY}` (см. §10).
 4. FAB → `AddDlg` (доход/расход, сумма, категория, заметка).
 
+**TopAppBar**: вместо статического `s.appTitle` — название текущего счёта
+(`acc?.name ?: s.appTitle`) с **тонкой обводкой** (`border(1.dp,
+Color(acc?.color)`) и тапом → `onOpenAccounts()`. Все операции
+(баланс, история, статистика, добавление, удаление) идут только с
+текущим `accountId` из `SettingsRepository`.
+
 Диалоги (в конце тела Composable, поверх Scaffold):
-- `viewed` — просмотр комментария записи по тапу на карточку: заголовок
-  «категория: сумма», дата + текст заметки в `verticalScroll` с
-  `heightIn(max=320.dp)` (прокрутка длинного текста), кнопка «Закрыть».
-- `toDelete` — подтверждение удаления (`AlertDialog` с категорией и суммой),
-  удаление только по кнопке «Удалить».
+- `viewed` — просмотр комментария записи по тапу на карточку.
+- `toDelete` — подтверждение удаления (`AlertDialog` с категорией и суммой).
 - `BackHandler` отключён, пока открыт любой диалог или FAB-окно.
 
-Хелперы в файле: `fmt()` (полный формат с валютой, для диалогов),
+### AccountsScreen
+[`ui/screens/AccountsScreen.kt`](app/src/main/java/com/example/financetracker/ui/screens/AccountsScreen.kt)
+— CRUD-справочник счетов:
+- `LazyColumn` карточек: цветовой индикатор (кружок), название, бейдж
+  «Текущий» для активного. Тап по карточке (не-текущей) →
+  `vm.select(id)` + `onSwitchAccount(id)` + `onBack()`.
+- Кнопки на каждой карточке: «Переименовать» (всегда), «Удалить»
+  (только если не текущий и не единственный).
+- FAB «Добавить» → диалог с полем названия.
+- Ошибки (валldation, БД) показываются через `Snackbar`.
+
+Хелперы в `DashboardScreen.kt`: `fmt()` (полный формат с валютой, для диалогов),
 `amountStr()` (AnnotatedString: число `numColor`, символ валюты `Color.White`;
 параметр `withSymbol` включает/выключает символ), `IncomeGreen`
 (`Color(0xFF81C784)` — цвет положительных сумм), `periodLabel()`, `compact()`.
@@ -289,6 +346,14 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 
 **Новый экран:** Composable в `ui/screens/` + ViewModel (если нужен) в
 `ui/viewmodel/` + `composable("route")` в `AppNavGraph`.
+
+**Новый счёт:** создаётся через `AccountsScreen` (FAB «Добавить»).
+`AccountEntity` имеет только `id`, `name`, `color`. Цвет выбирается
+автоматически из палитры `AccountEntity.PALETTE` (12 цветов,
+`nextColor()` берёт первый свободный). Все `transactions` и `stats`
+привязаны к `accountId` — новые данные идут только в текущий счёт.
+Удаление счёта — каскадное (transactions + stats + accounts).
+Ограничения: нельзя удалить последний, нельзя удалить текущий.
 
 **Новое поле в транзакции:** добавить в `TransactionEntity` → поднять `version`
 в `AppDatabase` → написать `MIGRATION` с `ALTER TABLE ADD COLUMN` (с дефолтом)

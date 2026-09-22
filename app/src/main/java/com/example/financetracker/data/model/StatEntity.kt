@@ -47,11 +47,12 @@ private fun dateOf(ts: Long): LocalDate =
 
 /**
  * Строка статистики: накопленные доходы/расходы по связке
- * (тип периода, ключ периода, валюта). Обновляется дельтой при
- * каждом добавлении/удалении записи, без пересчёта всей таблицы.
+ * (счёт, тип периода, ключ периода, валюта). Обновляется дельтой
+ * при каждом добавлении/удалении записи, без пересчёта всей таблицы.
  */
-@Entity(tableName = "stats", primaryKeys = ["periodType", "periodKey", "currencyCode"])
+@Entity(tableName = "stats", primaryKeys = ["accountId", "periodType", "periodKey", "currencyCode"])
 data class StatEntity(
+    val accountId: Int,
     val periodType: String,
     val periodKey: String,
     val currencyCode: String,
