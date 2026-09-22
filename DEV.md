@@ -229,10 +229,15 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 ### DashboardScreen
 [`ui/screens/DashboardScreen.kt`](app/src/main/java/com/example/financetracker/ui/screens/DashboardScreen.kt)
 структура Column:
-1. Карточка баланса (balance + income/expense).
+1. Карточка баланса — содержит заголовок «Баланс» и кнопку `IconButton`
+   (`ExpandMore`/`ExpandLess`) для сворачивания/разворачивания. В свернутом
+   состоянии (по умолчанию, `balanceExpanded = false`) виден только заголовок;
+   в развёрнутом — сумма баланса (белый символ валюты через `amountStr()`,
+   число `IncomeGreen` при `≥ 0`, `error` при `< 0`), строка дохода/расхода.
 2. Компактная статистика (`Row` из карточек `weight(1f)`) — чистая сумма за
-   `DAY/WEEK/MONTH/YEAR`, мелкий шрифт, формат через `compact()`
-   (`+12,4k`, `−48,9k`, `+318k`, `+1,2m`), цвет по знаку.
+   `DAY/WEEK/MONTH/YEAR`, мелкий шрифт, формат через `compact()`, цвет
+   `IncomeGreen`/`error` по знаку. Показывается **только** когда
+   `balanceExpanded = true` (скрывается вместе со сворачиванием баланса).
 3. `LazyColumn` с keyset-ленивой загрузкой: `LaunchedEffect` + `snapshotFlow`
    по `LazyListState` триггерит `vm.loadMore()` за 3 элемента до конца;
    внизу спиннер при `loadingMore`; пустое состояние `s.noRecords` с
@@ -247,7 +252,10 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
   удаление только по кнопке «Удалить».
 - `BackHandler` отключён, пока открыт любой диалог или FAB-окно.
 
-Хелперы в файле: `fmt()` (полный формат с валютой), `periodLabel()`, `compact()`.
+Хелперы в файле: `fmt()` (полный формат с валютой, для диалогов),
+`amountStr()` (AnnotatedString: число `numColor`, символ валюты `Color.White`;
+параметр `withSymbol` включает/выключает символ), `IncomeGreen`
+(`Color(0xFF81C784)` — цвет положительных сумм), `periodLabel()`, `compact()`.
 
 ---
 
