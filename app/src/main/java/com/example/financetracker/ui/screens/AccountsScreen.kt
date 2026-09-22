@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.financetracker.ui.screens
 
 import androidx.compose.foundation.background

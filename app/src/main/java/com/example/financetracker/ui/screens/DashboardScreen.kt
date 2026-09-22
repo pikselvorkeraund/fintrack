@@ -151,7 +151,7 @@ fun DashboardScreen(
             // Компактная статистика: чистая сумма за день/неделю/месяц/год
             if (balanceExpanded && ui.periods.isNotEmpty()) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, bottom = 8.dp),
+                    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ui.periods.forEach { st ->
@@ -385,8 +385,12 @@ private val IncomeGreen = Color(0xFF81C784)
 private fun amountStr(sign: String, value: Double, c: Currency, numColor: Color, withSymbol: Boolean = true) =
     buildAnnotatedString {
         val num = sign + String.format("%,.2f", value) + (if (withSymbol) " " else "")
-        append(num, style = SpanStyle(color = numColor))
+        pushStyle(SpanStyle(color = numColor))
+        append(num)
+        popStyle()
         if (withSymbol) {
-            append(c.symbol, style = SpanStyle(color = Color.White))
+            pushStyle(SpanStyle(color = Color.White))
+            append(c.symbol)
+            popStyle()
         }
     }
