@@ -27,6 +27,15 @@ android {
                 keyPassword = System.getenv("KEY_PASSWORD") ?: ""
             }
         }
+        create("debugFixed") {
+            val ks = System.getenv("DEBUG_KEYSTORE_PATH")
+            if (ks != null && File(ks).exists()) {
+                storeFile = File(ks)
+                storePassword = System.getenv("DEBUG_KEYSTORE_PASSWORD") ?: ""
+                keyAlias = System.getenv("DEBUG_KEY_ALIAS") ?: ""
+                keyPassword = System.getenv("DEBUG_KEY_PASSWORD") ?: ""
+            }
+        }
     }
     buildTypes {
         release {
@@ -36,6 +45,12 @@ android {
             val ks = System.getenv("KEYSTORE_PATH")
             if (ks != null && File(ks).exists()) {
                 signingConfig = signingConfigs.getByName("release")
+            }
+        }
+        debug {
+            val dks = System.getenv("DEBUG_KEYSTORE_PATH")
+            if (dks != null && File(dks).exists()) {
+                signingConfig = signingConfigs.getByName("debugFixed")
             }
         }
     }

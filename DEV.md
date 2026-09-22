@@ -46,12 +46,19 @@ FinTrack — офлайн-приложение для учёта личных ф
 ошибок — только на GitHub Actions после push. Перед push проверяйте код
 вручную: сигнатуры, импорты, скобки, связи слоёв.
 
-Релизный подписанный APK требует секретов GitHub Actions (см.
-[`.github/workflows/build.yml`](.github/workflows/build.yml)):
-`KEYSTORE_BASE64` (раскодируется в `release.keystore`, путь передаётся как env
-`KEYSTORE_PATH`), `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`
-(см. [`app/build.gradle.kts`](app/build.gradle.kts:20)). Без кейстора CI
-собирает debug-APK как fallback.
+**Подпись APK** (см. [`.github/workflows/build.yml`](.github/workflows/build.yml)):
+
+| Секреты GitHub Actions | Результат |
+|---|---|
+| `KEYSTORE_BASE64` + `KEYSTORE_PASSWORD` + `KEY_ALIAS` + `KEY_PASSWORD` | `assembleRelease` с release-ключом. |
+| Нет release, но `DEBUG_KEYSTORE_BASE64` + `DEBUG_KEYSTORE_PASSWORD` + `DEBUG_KEY_ALIAS` + `DEBUG_KEY_PASSWORD` | `assembleDebug` с **фиксированным** debug-ключом (обновление без удаления). |
+| Нет обоих | `assembleDebug` с авто-кейстором раннера (**несовместимо между запусками**). |
+
+`app/build.gradle.kts` определяет два `signingConfig`: `release` (env
+`KEYSTORE_PATH`/`KEYSTORE_PASSWORD`/`KEY_ALIAS`/`KEY_PASSWORD`) и
+`debugFixed` (env `DEBUG_KEYSTORE_PATH`/`DEBUG_KEYSTORE_PASSWORD`/
+`DEBUG_KEY_ALIAS`/`DEBUG_KEY_PASSWORD`). Debug-сборка использует
+`debugFixed`, если соответствующие env заданы, иначе — авто-кейстор.
 
 ---
 
