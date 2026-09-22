@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.border
@@ -385,12 +386,12 @@ private val IncomeGreen = Color(0xFF81C784)
 private fun amountStr(sign: String, value: Double, c: Currency, numColor: Color, withSymbol: Boolean = true) =
     buildAnnotatedString {
         val num = sign + String.format("%,.2f", value) + (if (withSymbol) " " else "")
-        pushStyle(SpanStyle(color = numColor))
-        append(num)
-        popStyle()
+        withStyle(SpanStyle(color = numColor)) {
+            append(num)
+        }
         if (withSymbol) {
-            pushStyle(SpanStyle(color = Color.White))
-            append(c.symbol)
-            popStyle()
+            withStyle(SpanStyle(color = Color.White)) {
+                append(c.symbol)
+            }
         }
     }
