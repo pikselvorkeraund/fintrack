@@ -21,6 +21,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.financetracker.data.model.Currency
@@ -93,16 +96,16 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
             ) {
                 Column(Modifier.padding(20.dp)) {
                     Text(s.balance, style = MaterialTheme.typography.bodyMedium)
-                    Text(fmt(ui.balance, ui.currency), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+                    Text(amountStr("", ui.balance, ui.currency, if (ui.balance < 0) MaterialTheme.colorScheme.error else IncomeGreen), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
                     Spacer(Modifier.height(8.dp))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
                             Text(s.income)
-                            Text("+${fmt(ui.income, ui.currency)}", color = MaterialTheme.colorScheme.primary)
+                            Text(amountStr("+", ui.income, ui.currency, IncomeGreen))
                         }
                         Column {
                             Text(s.expenses)
-                            Text("-${fmt(ui.expense, ui.currency)}", color = MaterialTheme.colorScheme.error)
+                            Text(amountStr("-", ui.expense, ui.currency, MaterialTheme.colorScheme.error))
                         }
                     }
                 }
@@ -111,7 +114,7 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
             // Компактная статистика: чистая сумма за день/неделю/месяц/год
             if (ui.periods.isNotEmpty()) {
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp, bottom = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ui.periods.forEach { st ->
@@ -131,7 +134,7 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = if (st.net < 0) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.primary
+                                    else IncomeGreen
                                 )
                             }
                         }
@@ -189,9 +192,8 @@ fun DashboardScreen(vm: FinanceViewModel = hiltViewModel(), onOpenSettings: () -
                                 )
                             }
                             Text(
-                                "${if (t.isIncome) "+" else "-"}${fmt(t.amount, Currency.fromCode(t.currencyCode))}",
-                                fontWeight = FontWeight.Bold,
-                                color = if (t.isIncome) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                                amountStr(if (t.isIncome) "+" else "-", t.amount, Currency.fromCode(t.currencyCode), if (t.isIncome) IncomeGreen else MaterialTheme.colorScheme.error),
+                                fontWeight = FontWeight.Bold
                             )
                             IconButton(onClick = { toDelete = t }) {
                                 Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
@@ -333,3 +335,11 @@ private fun compact(v: Double): String {
         else String.format("%.1f", num).replace('.', ',')
     return sign + body + suf
 }
+
+private val IncomeGreen = Color(0xFF81C784)
+
+private fun amountStr(sign: String, value: Double, c: Currency, numColor: Color) =
+    buildAnnotatedString {
+        append(sign + String.format("%,.2f", value) + " ", style = SpanStyle(color = numColor))
+        append(c.symbol, style = SpanStyle(color = Color.White))
+    }
