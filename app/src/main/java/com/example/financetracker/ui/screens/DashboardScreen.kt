@@ -51,6 +51,12 @@ fun DashboardScreen(
     val ui by vm.ui.collectAsState()
     val cur by vm.currency.collectAsState()
     val acc by vm.account.collectAsState()
+
+    // Перезагружаем данные при первом композе дашборда
+    // (FinanceViewModel.init отработал ещё до открытия БД)
+    LaunchedEffect(Unit) {
+        vm.reload()
+    }
     var dlg by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var viewed by remember { mutableStateOf<TransactionEntity?>(null) }
