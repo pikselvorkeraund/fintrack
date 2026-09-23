@@ -24,7 +24,7 @@ fun LockScreen(state: LockState, onPattern: (List<Int>) -> Unit, onOk: () -> Uni
         is LockState.Error -> when (state.key) {
             "min4" -> s.min4
             "wrong" -> s.wrongPrefix + state.arg
-            "db" -> s.dbError
+            "db" -> if (state.arg.isBlank()) s.dbError else s.dbError + ": " + state.arg
             else -> "Error: ${state.arg}"
         }
         is LockState.Wiped -> s.wiped

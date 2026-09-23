@@ -38,7 +38,10 @@ class AccountsViewModel @Inject constructor(
             _loading.update { true }
             try {
                 _accounts.value = repo.listAccounts()
-            } catch (_: Exception) { }
+            } catch (_: Throwable) { }
+            // В release-сборке Room/SQLCipher могут бросать Error-подклассы
+            // (UnsatisfiedLinkError и т.п.), которые пролетают мимо catch(Exception)
+            // и роняют процесс как uncaught в viewModelScope.
             _loading.update { false }
         }
     }
@@ -54,7 +57,7 @@ class AccountsViewModel @Inject constructor(
                 repo.addAccount(trimmed)
                 refresh()
                 _error.value = null
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 _error.value = "db_error"
             }
         }
@@ -72,7 +75,7 @@ class AccountsViewModel @Inject constructor(
                 repo.renameAccount(id, trimmed)
                 refresh()
                 _error.value = null
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 _error.value = "db_error"
             }
         }
@@ -102,7 +105,7 @@ class AccountsViewModel @Inject constructor(
                 repo.deleteAccount(id)
                 refresh()
                 _error.value = null
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 _error.value = "db_error"
             }
         }

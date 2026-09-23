@@ -76,10 +76,12 @@ abstract class AppDatabase : RoomDatabase() {
          */
         val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                // 1. Таблица счетов
+                // 1. Таблица счетов. PK обязан быть NOT NULL — Room при
+                // валидации сравнивает column def строго и падает, если в БД
+                // PK-колонка объявлена NULLABLE.
                 db.execSQL(
                     "CREATE TABLE IF NOT EXISTS `accounts` (" +
-                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
                         "`name` TEXT NOT NULL, " +
                         "`color` INTEGER NOT NULL)"
                 )
@@ -90,9 +92,19 @@ abstract class AppDatabase : RoomDatabase() {
 
                 // 2. Добавляем accountId в transactions
                 db.execSQL("ALTER TABLE transactions ADD COLUMN accountId INTEGER NOT NULL DEFAULT 1")
-                // Индекс для keyset-пагинации по счёту + валюте
+                // Room сравнивает набор индексов строго (в обе стороны): любой
+                // лишний индекс из v1/v2, не объявленный в @Entity v3, роняет
+                // валидацию. Не зная точных имён прежних индексов, удаляем все
+                // индексы transactions и создаём ровно ожидаемый.
+                db.query("PRAGMA index_list(`transactions`)").use { c ->
+                    val iName = c.getColumnIndexOrThrow("name")
+                    while (c.moveToNext()) {
+                        val idx = c.getString(iName) ?: continue
+                        db.execSQL("DROP INDEX IF EXISTS `$idx`")
+                    }
+                }
                 db.execSQL(
-                    "CREATE INDEX IF NOT EXISTS `index_transactions_accountId_currencyCode_id` " +
+                    "CREATE INDEX `index_transactions_accountId_currencyCode_id` " +
                         "ON `transactions` (`accountId`, `currencyCode`, `id`)"
                 )
 

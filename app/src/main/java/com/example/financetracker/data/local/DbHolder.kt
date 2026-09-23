@@ -23,10 +23,17 @@ class DbHolder @Inject constructor(
 
     fun isUnlocked(): Boolean = db != null
 
+    /** Последний сбой открытия БД (текст для показа на экране блокировки). */
+    @Volatile
+    var lastError: String? = null
+        private set
+
     /**
      * Пытается открыть (или создать) БД с данным паролем.
-     * Возвращает false, если пароль не подошёл (файл БД не трогается).
+     * Возвращает false, если пароль не подошёл или БД не открылась
+     * (файл БД не трогается). Причина сбоя — в [lastError].
      */
+
     fun unlock(passphrase: ByteArray): Boolean {
         if (db != null) return true
         val candidate = build(passphrase)
@@ -35,8 +42,15 @@ class DbHolder @Inject constructor(
             // бросает исключение. Проверяем до публикации экземпляра.
             runBlocking { candidate.dao().count() }
             db = candidate
+            lastError = null
             true
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // В release-сборке инициализация SQLCipher/R8 может бросить
+            // Error (UnsatisfiedLinkError, ExceptionInInitializerError),
+            // а не Exception — такой throwable пролетает мимо catch(Exception)
+            // и роняет процесс. Ловим Throwable и сохраняем текст ошибки,
+            // чтобы показать его на экране блокировки.
+            lastError = "${e.javaClass.simpleName}: ${e.message ?: ""}"
             try { candidate.close() } catch (_: Exception) {}
             false
         }

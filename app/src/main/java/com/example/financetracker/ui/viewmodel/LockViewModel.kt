@@ -44,7 +44,7 @@ class LockViewModel @Inject constructor(
                                 db.unlock(key) || db.recreateWith(key)
                             }
                             _s.value = if (ok) LockState.Unlocked
-                                       else LockState.Error("db")
+                                       else LockState.Error("db", (db.lastError ?: "").take(160))
                         } else {
                             _s.value = LockState.Error("min4")
                         }
@@ -60,7 +60,7 @@ class LockViewModel @Inject constructor(
                                 db.unlock(key) || db.recreateWith(key)
                             }
                             _s.value = if (ok) LockState.Unlocked
-                                       else LockState.Error("db")
+                                       else LockState.Error("db", (db.lastError ?: "").take(160))
                         } else if (plm.shouldWipe()) {
                             db.lock()
                             plm.wipeAll()
@@ -71,8 +71,10 @@ class LockViewModel @Inject constructor(
                     }
                     else -> {}
                 }
-            } catch (e: Exception) {
-                _s.value = LockState.Error("unknown", e.message?.take(50) ?: "")
+            } catch (e: Throwable) {
+                // В release нативные сбои SQLCipher/JNI приходят как Error
+                // (UnsatisfiedLinkError и т.п.) и пролетают мимо catch(Exception).
+                _s.value = LockState.Error("unknown", e.toString().take(160))
             }
         }
     }

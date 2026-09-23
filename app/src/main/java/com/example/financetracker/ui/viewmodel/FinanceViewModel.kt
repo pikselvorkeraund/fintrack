@@ -93,7 +93,10 @@ class FinanceViewModel @Inject constructor(
             try {
                 val items = repo.page(acc, c.code, 0L, PAGE_SIZE)
                 _ui.update { s -> s.copy(items = items, hasMore = items.size >= PAGE_SIZE, loading = false) }
-            } catch (e: Exception) {
+            } catch (_: Throwable) {
+                // В release сбои Room/SQLCipher могут быть Error-подклассом
+                // (UnsatisfiedLinkError), который пролетает мимо catch(Exception)
+                // и роняет процесс как uncaught в viewModelScope.
                 _ui.value = UiState(currency = c, loading = false)
             }
             refreshTotals()
@@ -112,7 +115,7 @@ class FinanceViewModel @Inject constructor(
             try {
                 val next = repo.page(settings.currentAccountId(), _cur.value.code, st.items.last().id, PAGE_SIZE)
                 _ui.update { s -> s.copy(items = s.items + next, hasMore = next.size >= PAGE_SIZE, loadingMore = false) }
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 _ui.update { s -> s.copy(loadingMore = false) }
             }
         }
@@ -121,8 +124,8 @@ class FinanceViewModel @Inject constructor(
     private suspend fun refreshTotals() {
         val c = _cur.value
         val acc = settings.currentAccountId()
-        val i = try { repo.income(acc, c.code) } catch (_: Exception) { 0.0 }
-        val e = try { repo.expense(acc, c.code) } catch (_: Exception) { 0.0 }
+        val i = try { repo.income(acc, c.code) } catch (_: Throwable) { 0.0 }
+        val e = try { repo.expense(acc, c.code) } catch (_: Throwable) { 0.0 }
         _ui.update { s -> s.copy(income = i, expense = e, balance = i - e, currency = c) }
         refreshPeriods()
     }
@@ -141,7 +144,7 @@ class FinanceViewModel @Inject constructor(
                 val exp = repo.periodExpense(acc, c, p, p.keyOf(now))
                 PeriodStat(p, inc - exp)
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             emptyList()
         }
         _ui.update { s -> s.copy(periods = list) }
@@ -172,7 +175,7 @@ class FinanceViewModel @Inject constructor(
                         ) + s.items
                     )
                 }
-            } catch (_: Exception) { }
+            } catch (_: Throwable) { }
             refreshTotals()
         }
     }
@@ -184,7 +187,7 @@ class FinanceViewModel @Inject constructor(
                 _ui.update { s -> s.copy(items = s.items.filter { it.id != t.id }) }
                 if (_ui.value.items.isEmpty() && _ui.value.hasMore) reload()
                 else if (_ui.value.items.size < PAGE_SIZE && _ui.value.hasMore) loadMore()
-            } catch (_: Exception) { }
+            } catch (_: Throwable) { }
             refreshTotals()
         }
     }
