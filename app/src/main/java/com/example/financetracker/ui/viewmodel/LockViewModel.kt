@@ -32,6 +32,15 @@ class LockViewModel @Inject constructor(
     )
     val state: StateFlow<LockState> = _s
 
+    init {
+        // Если прошлый процесс умер (в т.ч. нативным SIGSEGV, который не
+        // перехватывается в JVM), на этом запуске сразу показываем точку,
+        // до которой он дожил + Java-стектрейс (если был).
+        db.debugInfo()?.let { info ->
+            _s.value = LockState.Error("unknown", info.take(300))
+        }
+    }
+
     fun onPattern(p: List<Int>) {
         viewModelScope.launch {
             try {
@@ -44,7 +53,7 @@ class LockViewModel @Inject constructor(
                                 db.unlock(key) || db.recreateWith(key)
                             }
                             _s.value = if (ok) LockState.Unlocked
-                                       else LockState.Error("db", (db.lastError ?: "").take(160))
+                                       else LockState.Error("db", ((db.lastError ?: "") + " | " + (db.debugInfo() ?: "")).take(300))
                         } else {
                             _s.value = LockState.Error("min4")
                         }
@@ -60,7 +69,7 @@ class LockViewModel @Inject constructor(
                                 db.unlock(key) || db.recreateWith(key)
                             }
                             _s.value = if (ok) LockState.Unlocked
-                                       else LockState.Error("db", (db.lastError ?: "").take(160))
+                                       else LockState.Error("db", ((db.lastError ?: "") + " | " + (db.debugInfo() ?: "")).take(300))
                         } else if (plm.shouldWipe()) {
                             db.lock()
                             plm.wipeAll()

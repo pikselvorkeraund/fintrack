@@ -96,12 +96,20 @@ abstract class AppDatabase : RoomDatabase() {
                 // лишний индекс из v1/v2, не объявленный в @Entity v3, роняет
                 // валидацию. Не зная точных имён прежних индексов, удаляем все
                 // индексы transactions и создаём ровно ожидаемый.
+                // ВАЖНО: сначала собираем имена в список и ЗАКРЫВАЕМ курсор,
+                // и только потом делаем DROP. Выполнение DDL при открытом
+                // курсоре этого же соединения — undefined behavior SQLite
+                // (кандидат на нативный SIGSEGV, который не ловится ни одним
+                // catch в JVM и роняет процесс молча).
+                val oldIndexes = ArrayList<String>()
                 db.query("PRAGMA index_list(`transactions`)").use { c ->
                     val iName = c.getColumnIndexOrThrow("name")
                     while (c.moveToNext()) {
-                        val idx = c.getString(iName) ?: continue
-                        db.execSQL("DROP INDEX IF EXISTS `$idx`")
+                        c.getString(iName)?.let { oldIndexes.add(it) }
                     }
+                }
+                for (idx in oldIndexes) {
+                    db.execSQL("DROP INDEX IF EXISTS `$idx`")
                 }
                 db.execSQL(
                     "CREATE INDEX `index_transactions_accountId_currencyCode_id` " +

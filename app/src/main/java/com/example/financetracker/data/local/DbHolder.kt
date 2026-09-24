@@ -2,6 +2,7 @@ package com.example.financetracker.data.local
 
 import android.content.Context
 import androidx.room.Room
+import com.example.financetracker.data.security.CrashLog
 import dagger.hilt.android.qualifiers.ApplicationContext
 
 import kotlinx.coroutines.runBlocking
@@ -36,15 +37,25 @@ class DbHolder @Inject constructor(
 
     fun unlock(passphrase: ByteArray): Boolean {
         if (db != null) return true
+        // Контрольные точки пишутся в файл ДО каждого потенциально
+        // фатального шага. Если процесс умрёт нативным SIGSEGV (catch
+        // не поможет), при следующем запуске мы увидим последний
+        // пройденный шаг — это точечно укажет на причину.
+        CrashLog.mark(ctx, "build-db")
         val candidate = build(passphrase)
         return try {
             // Реальный запрос через Room: неверный пароль SQLCipher
             // бросает исключение. Проверяем до публикации экземпляра.
+            // Первое обращение к connection запускает создание файла БД,
+            // миграции и инициализацию JNI — самая вероятная точка креша.
+            CrashLog.mark(ctx, "first-query")
             runBlocking { candidate.dao().count() }
             db = candidate
             lastError = null
+            CrashLog.mark(ctx, "open-ok")
             true
         } catch (e: Throwable) {
+            CrashLog.mark(ctx, "open-error: ${e.javaClass.simpleName}")
             // В release-сборке инициализация SQLCipher/R8 может бросить
             // Error (UnsatisfiedLinkError, ExceptionInInitializerError),
             // а не Exception — такой throwable пролетает мимо catch(Exception)
@@ -87,4 +98,7 @@ class DbHolder @Inject constructor(
             .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
             .fallbackToDestructiveMigration()
             .build()
+
+    /** Текст последней диагностики (для показа на экране блокировки). */
+    fun debugInfo(): String? = CrashLog.readAndClear(ctx)
 }
