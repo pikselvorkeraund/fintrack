@@ -389,6 +389,13 @@ Color(acc?.color)`) и тапом → `onOpenAccounts()`. Все операци�
 
 ## 12. Известные нюансы
 
+- **Цвет счёта из БД конвертировать только через `Color(Long.toInt())`**, а не
+  `Color(long.toULong())`. `AccountEntity.color` хранит `0xAARRGGBB` как `Long`;
+  первичный value-конструктор `Color(ULong)` трактует число как внутреннее
+  представление (в старших битах — индекс цветового пространства) и при рендере
+  падает с `ArrayIndexOutOfBoundsException: length=18; index=18` внутри
+  `androidx.compose.ui.graphics.Color.getColorSpace`. `Color(Int)` корректно
+  декодирует ARGB в sRGB.
 - Room invalidation-трекер с SQLCipher может не срабатывать, поэтому
   `FinanceViewModel` после записи обновляет состояние **явно**
   (`reload()`/`refreshTotals()`), а не полагается на `Flow`.

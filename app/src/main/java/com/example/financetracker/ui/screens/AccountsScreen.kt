@@ -109,7 +109,7 @@ fun AccountsScreen(
                                 Modifier
                                     .size(12.dp)
                                     .clip(CircleShape)
-                                    .background(Color(a.color.toULong()))
+                                    .background(Color(a.color.toInt()))
                             )
                             Spacer(Modifier.width(10.dp))
                             Column {

@@ -89,7 +89,7 @@ fun DashboardScreen(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier
                         .clickable { onOpenAccounts() }
-                        .border(1.dp, Color((acc?.color ?: 0xFF1976D2L).toULong()))
+                        .border(1.dp, Color((acc?.color ?: 0xFF1976D2L).toInt()))
                         .padding(4.dp)
                 )
             }, actions = {
