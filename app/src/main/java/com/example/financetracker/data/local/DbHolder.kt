@@ -92,6 +92,9 @@ class DbHolder @Inject constructor(
 
     fun accountDao(): AccountDao = db().accountDao()
 
+    /** Публичная контрольная точка для диагностики (пишет в файл). */
+    fun checkpoint(tag: String) = CrashLog.mark(ctx, tag)
+
     private fun build(passphrase: ByteArray): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, AppDatabase.DB_NAME)
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
