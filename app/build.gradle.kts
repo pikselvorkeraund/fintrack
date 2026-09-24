@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.financetracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.1.0"
+        versionCode = 4
+        versionName = "1.1.1-diag"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         vectorDrawables { useSupportLibrary = true }
     }
@@ -39,8 +39,19 @@ android {
     }
     buildTypes {
         release {
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // ДИАГНОСТИКА: R8/shrinker временно ОТКЛЮЧЕНЫ (версия 4).
+            // Все Java-throwables (включая Error) уже перехвачены, keep
+            // в proguard-rules.pro полный — но release продолжает падать
+            // молча сразу после ввода узора. Единственные оставшиеся
+            // кандидаты: (а) нативный SIGSEGV в SQLCipher, вызванный
+            // R8/resource-shrinker, или (б) ошибка за пределами всех
+            // цепочек (миграция/навигация). Отключение minify точно
+            // разделяет эти два случая: заработает = R8 (а);
+            // продолжит падать = миграция/код (б) — и CrashLog на экране
+            // блокировки при повторном запуске покажет последнюю контрольную
+            // точку unlock. Вернуть true после диагностики.
+            isMinifyEnabled = false
+            isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             val ks = System.getenv("KEYSTORE_PATH")
             if (ks != null && File(ks).exists()) {
