@@ -12,6 +12,7 @@ import com.example.financetracker.ui.screens.AccountsScreen
 import com.example.financetracker.ui.screens.DashboardScreen
 import com.example.financetracker.ui.screens.LockScreen
 import com.example.financetracker.ui.screens.SettingsScreen
+import com.example.financetracker.ui.screens.StatsScreen
 import com.example.financetracker.ui.viewmodel.FinanceViewModel
 import com.example.financetracker.ui.viewmodel.LockViewModel
 
@@ -36,8 +37,15 @@ fun AppNavGraph(settings: SettingsRepository) {
                 DashboardScreen(
                     vm = financeVm,
                     onOpenSettings = { nav.navigate("settings") },
-                    onOpenAccounts = { nav.navigate("accounts") }
+                    onOpenAccounts = { nav.navigate("accounts") },
+                    // Валюта передаётся аргументом: экран статистики строится
+                    // по той же активной валюте, что и дашборд
+                    onOpenStats = { nav.navigate("stats/${financeVm.currency.value.code}") }
                 )
+            }
+            composable("stats/{currency}") {
+                // StatsViewModel получает аргумент currency через SavedStateHandle
+                StatsScreen(onBack = { nav.popBackStack() })
             }
             composable("accounts") {
                 AccountsScreen(

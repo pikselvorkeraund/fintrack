@@ -3,6 +3,7 @@ package com.example.financetracker.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.financetracker.data.model.AccountEntity
+import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.Currency
 import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.TransactionEntity
@@ -49,17 +50,33 @@ class FinanceViewModel @Inject constructor(
     private val _account = MutableStateFlow<AccountEntity?>(null)
     val account: StateFlow<AccountEntity?> = _account.asStateFlow()
 
+    /** Справочник категорий (расходные и доходные вместе, в порядке id). */
+    private val _categories = MutableStateFlow<List<CategoryEntity>>(emptyList())
+    val categories: StateFlow<List<CategoryEntity>> = _categories.asStateFlow()
+
     init {
         reload()
     }
 
-    /** Загружает актуальную информацию о текущем счёте. */
+    /** Загружает актуальную информацию о текущем счёте и справочник категорий. */
     suspend fun loadAccount() {
-        // Гарантируем, что хотя бы один счёт существует
+        // Гарантируем, что хотя бы один счёт и категория существуют
         // (новый файл БД после recreateWith или первый запуск)
         runCatching { repo.ensureDefaultAccount() }
+        runCatching { repo.ensureDefaultCategories() }
         val acc = settings.currentAccountId()
         _account.value = runCatching { repo.listAccounts().firstOrNull { it.id == acc } }.getOrNull()
+        _categories.value = runCatching { repo.listCategories() }.getOrDefault(emptyList())
+    }
+
+    /**
+     * Создаёт категорию и обновляет справочник. Возвращает id новой
+     * (или уже существовавшей) категории; null — если имя пустое или БД недоступна.
+     */
+    suspend fun addCategory(name: String, isIncome: Boolean): Int? {
+        val id = runCatching { repo.addCategory(name, isIncome) }.getOrNull() ?: return null
+        _categories.value = runCatching { repo.listCategories() }.getOrDefault(_categories.value)
+        return id
     }
 
     /** Переключает активный счёт: обновляет SettingsRepository + перезагружает дашборд. */
@@ -150,7 +167,11 @@ class FinanceViewModel @Inject constructor(
         _ui.update { s -> s.copy(periods = list) }
     }
 
-    fun add(amount: Double, cat: String, note: String, income: Boolean) {
+    /**
+     * Добавление записи. timestamp — выбранная пользователем дата и время
+     * (по умолчанию — текущий момент). categoryId — ссылка на справочник.
+     */
+    fun add(amount: Double, categoryId: Int, note: String, income: Boolean, timestamp: Long = System.currentTimeMillis()) {
         viewModelScope.launch {
             val c = _cur.value
             val acc = settings.currentAccountId()
@@ -160,9 +181,10 @@ class FinanceViewModel @Inject constructor(
                         accountId = acc,
                         amount = amount,
                         currencyCode = c.code,
-                        category = cat,
+                        categoryId = categoryId,
                         note = note,
-                        isIncome = income
+                        isIncome = income,
+                        timestamp = timestamp
                     )
                 )
                 _ui.update { s ->
@@ -170,7 +192,8 @@ class FinanceViewModel @Inject constructor(
                         items = listOf(
                             TransactionEntity(
                                 id = id, accountId = acc, amount = amount,
-                                currencyCode = c.code, category = cat, note = note, isIncome = income
+                                currencyCode = c.code, categoryId = categoryId,
+                                note = note, isIncome = income, timestamp = timestamp
                             )
                         ) + s.items
                     )

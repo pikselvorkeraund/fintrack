@@ -4,19 +4,32 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.financetracker.data.model.AccountEntity
+import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.StatEntity
 import com.example.financetracker.data.model.TransactionEntity
 
+/** Полные PK-ключи строк stats для агрегации в миграции v3->v4.
+ *  Обычные Array/ключи не подходят: HashMap сравнивает их по ссылке,
+ *  а data class даёт структурные equals/hashCode. */
+private data class AggKey(val acc: Int, val pt: String, val pk: String, val cur: String)
+private data class CatKey(val acc: Int, val pt: String, val pk: String, val cur: String, val cat: Int)
+
 @Database(
-    entities = [TransactionEntity::class, StatEntity::class, AccountEntity::class],
-    version = 3,
+    entities = [
+        TransactionEntity::class,
+        StatEntity::class,
+        AccountEntity::class,
+        CategoryEntity::class
+    ],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun dao(): TransactionDao
     abstract fun statDao(): StatDao
     abstract fun accountDao(): AccountDao
+    abstract fun categoryDao(): CategoryDao
 
     companion object {
         const val DB_NAME = "finance.db"
@@ -155,6 +168,158 @@ abstract class AppDatabase : RoomDatabase() {
                         "INSERT INTO stats (accountId, periodType, periodKey, currencyCode, income, expense) " +
                             "VALUES (?, ?, ?, ?, ?, ?)",
                         arrayOf(1, k.first, k.second, k.third, v[0], v[1])
+                    )
+                }
+            }
+        }
+
+        /**
+         * v3 -> v4: справочник категорий + статистика по категориям.
+         * 1. Создаёт `categories` и засевает дефолтный набор
+         *    (расходы первыми, затем доходы — те же ключи, что переводятся
+         *    через карту Strings в UI). DDL таблицы — ровно таким, каким Room
+         *    создал бы её из @Entity (без DEFAULT): иначе валидация схемы
+         *    после миграции падает и fallbackToDestructiveMigration стирает
+         *    данные.
+         * 2. `transactions` ПЕРЕСТРАИВАЕТСЯ (create new + INSERT..SELECT +
+         *    drop + rename): старая колонка `category TEXT NOT NULL` в v4
+         *    сущности отсутствует, и просто `ALTER ADD categoryId` оставила
+         *    бы NOT NULL-колонку без значения по умолчанию — INSERT Room'а
+         *    падал бы с `NOT NULL constraint failed`. categoryId заполняется
+         *    маппингом по (name, isIncome) справочника, фолбэк — «Other»
+         *    того же типа (посеян всегда).
+         * 3. Индексы создаются заново на переименованной таблице (ровно как
+         *    объявлены в v4).
+         * 4. Пересборка stats: DROP + CREATE с categoryId в составном PK,
+         *    затем из уцелевших транзакций агрегируются строки
+         *    categoryId = 0 (итог по валюте, читается дашбордом точечно)
+         *    и categoryId > 0 (разбивка по категориям для экрана статистики).
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. Таблица категорий (PK NOT NULL; определения — ровно как
+                // создаёт Room по @Entity: без DEFAULT, иначе валидация
+                // схемы после миграции не совпадёт и destructive-fallback
+                // сотрёт данные)
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `categories` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`name` TEXT NOT NULL, " +
+                        "`isIncome` INTEGER NOT NULL)"
+                )
+                for (n in CategoryEntity.DEFAULT_EXPENSE) {
+                    db.execSQL(
+                        "INSERT INTO categories (name, isIncome) VALUES (?, 0)",
+                        arrayOf(n)
+                    )
+                }
+                for (n in CategoryEntity.DEFAULT_INCOME) {
+                    db.execSQL(
+                        "INSERT INTO categories (name, isIncome) VALUES (?, 1)",
+                        arrayOf(n)
+                    )
+                }
+
+                // 2. Перестроение transactions: без старой `category`
+                // (её больше нет в сущности v4), с новым `categoryId`.
+                // Имена колонок и их определения — ровно как Room создаёт
+                // по @Entity v4.
+                db.execSQL(
+                    "CREATE TABLE `transactions_new` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`accountId` INTEGER NOT NULL, " +
+                        "`amount` REAL NOT NULL, " +
+                        "`currencyCode` TEXT NOT NULL, " +
+                        "`categoryId` INTEGER NOT NULL, " +
+                        "`note` TEXT NOT NULL, " +
+                        "`isIncome` INTEGER NOT NULL, " +
+                        "`timestamp` INTEGER NOT NULL)"
+                )
+                // Маппинг строковых категорий в id. Имена в данных v3 — ключи
+                // карты catsEn/catsRu ("Food", "Salary"…). Фолбэк — «Other»
+                // того же типа; он посеян для обоих типов, NULL здесь
+                // невозможен. Старые id сохраняются (keyset-пагинация цела).
+                db.execSQL(
+                    "INSERT INTO `transactions_new` " +
+                        "(id, accountId, amount, currencyCode, categoryId, note, isIncome, timestamp) " +
+                        "SELECT t.id, t.accountId, t.amount, t.currencyCode, " +
+                        "IFNULL(" +
+                        "(SELECT c.id FROM categories c WHERE c.name = t.category AND c.isIncome = t.isIncome LIMIT 1), " +
+                        "(SELECT c.id FROM categories c WHERE c.name = 'Other' AND c.isIncome = t.isIncome LIMIT 1)), " +
+                        "t.note, t.isIncome, t.timestamp FROM transactions t"
+                )
+                db.execSQL("DROP TABLE `transactions`")
+                db.execSQL("ALTER TABLE `transactions_new` RENAME TO `transactions`")
+
+                // 3. Индексы: пересоздаём ровно как в @Entity v4 (DDL при
+                // открытом курсоре прежней таблицы уже не выполняется —
+                // таблица переименована; старые индексы удалены вместе с ней).
+                db.execSQL(
+                    "CREATE INDEX `index_transactions_accountId_currencyCode_id` " +
+                        "ON `transactions` (`accountId`, `currencyCode`, `id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX `index_transactions_categoryId` " +
+                        "ON `transactions` (`categoryId`)"
+                )
+
+                // 4. Пересоздаём stats с categoryId в составном PK
+                db.execSQL("DROP TABLE IF EXISTS `stats`")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `stats` (" +
+                        "`accountId` INTEGER NOT NULL, " +
+                        "`periodType` TEXT NOT NULL, " +
+                        "`periodKey` TEXT NOT NULL, " +
+                        "`currencyCode` TEXT NOT NULL, " +
+                        "`categoryId` INTEGER NOT NULL, " +
+                        "`income` REAL NOT NULL, " +
+                        "`expense` REAL NOT NULL, " +
+                        "PRIMARY KEY(`accountId`, `periodType`, `periodKey`, `currencyCode`, `categoryId`))"
+                )
+                // Пересборка из транзакций (данные уцелели): ключ — полный PK
+                // строки, value — [income, expense]. Две карты: агрегат по
+                // валюте и разбивка по категории. Ключи — data class'ы, иначе
+                // getOrPut не найдёт существующую запись (Array = сравнение
+                // по ссылке, каждая транзакция создала бы новую строку).
+                val agg = HashMap<AggKey, DoubleArray>()
+                val byCat = HashMap<CatKey, DoubleArray>()
+                db.query(
+                    "SELECT accountId, categoryId, currencyCode, timestamp, isIncome, amount FROM transactions"
+                ).use { c ->
+                    val iAcc = c.getColumnIndexOrThrow("accountId")
+                    val iCat = c.getColumnIndexOrThrow("categoryId")
+                    val iCur = c.getColumnIndexOrThrow("currencyCode")
+                    val iTs = c.getColumnIndexOrThrow("timestamp")
+                    val iInc = c.getColumnIndexOrThrow("isIncome")
+                    val iAmt = c.getColumnIndexOrThrow("amount")
+                    while (c.moveToNext()) {
+                        val acc = c.getInt(iAcc)
+                        val cat = c.getInt(iCat)
+                        val cur = c.getString(iCur)
+                        val ts = c.getLong(iTs)
+                        val amount = c.getDouble(iAmt)
+                        val isIncome = c.getInt(iInc) == 1
+                        for (p in PeriodType.entries) {
+                            val pk = p.keyOf(ts)
+                            agg.getOrPut(AggKey(acc, p.name, pk, cur)) { doubleArrayOf(0.0, 0.0) }
+                                .let { if (isIncome) it[0] += amount else it[1] += amount }
+                            byCat.getOrPut(CatKey(acc, p.name, pk, cur, cat)) { doubleArrayOf(0.0, 0.0) }
+                                .let { if (isIncome) it[0] += amount else it[1] += amount }
+                        }
+                    }
+                }
+                agg.forEach { (k, v) ->
+                    db.execSQL(
+                        "INSERT INTO stats (accountId, periodType, periodKey, currencyCode, categoryId, income, expense) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        arrayOf(k.acc, k.pt, k.pk, k.cur, StatEntity.AGGREGATE_ID, v[0], v[1])
+                    )
+                }
+                byCat.forEach { (k, v) ->
+                    db.execSQL(
+                        "INSERT INTO stats (accountId, periodType, periodKey, currencyCode, categoryId, income, expense) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                        arrayOf(k.acc, k.pt, k.pk, k.cur, k.cat, v[0], v[1])
                     )
                 }
             }

@@ -1,8 +1,10 @@
 package com.example.financetracker.data.repository
 
 import androidx.room.withTransaction
+import com.example.financetracker.data.local.CategorySum
 import com.example.financetracker.data.local.DbHolder
 import com.example.financetracker.data.model.AccountEntity
+import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.StatEntity
 import com.example.financetracker.data.model.TransactionEntity
@@ -20,20 +22,22 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
 
     /**
      * Суммы берутся из инкрементальной таблицы статистики: период TOTAL —
-     * одна накопленная строка на счёт + валюту, обновляемая дельтой при
-     * каждом добавлении/удалении. Чтение — точечный запрос по PK, без скана.
+     * одна накопленная строка на счёт + валюту (агрегирующая, categoryId = 0),
+     * обновляемая дельтой при каждом добавлении/удалении. Чтение — точечный
+     * запрос по PK, без скана.
      */
     suspend fun income(acc: Int, cur: String): Double =
-        db.statDao().periodIncome(acc, cur, PeriodType.TOTAL.name, "")
+        db.statDao().periodIncome(acc, cur, PeriodType.TOTAL.name, "", StatEntity.AGGREGATE_ID)
 
     suspend fun expense(acc: Int, cur: String): Double =
-        db.statDao().periodExpense(acc, cur, PeriodType.TOTAL.name, "")
+        db.statDao().periodExpense(acc, cur, PeriodType.TOTAL.name, "", StatEntity.AGGREGATE_ID)
 
+    /** Суммы за конкретный период — читаются из агрегирующей строки периода. */
     suspend fun periodIncome(acc: Int, cur: String, pt: PeriodType, key: String): Double =
-        db.statDao().periodIncome(acc, cur, pt.name, key)
+        db.statDao().periodIncome(acc, cur, pt.name, key, StatEntity.AGGREGATE_ID)
 
     suspend fun periodExpense(acc: Int, cur: String, pt: PeriodType, key: String): Double =
-        db.statDao().periodExpense(acc, cur, pt.name, key)
+        db.statDao().periodExpense(acc, cur, pt.name, key, StatEntity.AGGREGATE_ID)
 
     /**
      * Добавление записи и дельта-обновление статистики в одной транзакции.
@@ -57,6 +61,52 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
         db.dao().deleteAll()
         db.statDao().deleteAll()
     }
+
+    // ---------- Справочник категорий ----------
+
+    suspend fun listCategories(): List<CategoryEntity> = db.categoryDao().listAll()
+
+    /**
+     * Добавление категории в конец справочника (id AUTOINCREMENT = порядок).
+     * Если категория того же типа с таким именем (NOCASE) уже есть —
+     * возвращает её id без создания дубля. Пустое имя — null.
+     */
+    suspend fun addCategory(rawName: String, isIncome: Boolean): Int? {
+        val name = rawName.trim()
+        if (name.isEmpty()) return null
+        val existing = db.categoryDao().byName(name, isIncome)
+        if (existing != null) return existing.id
+        return db.categoryDao().insert(CategoryEntity(name = name, isIncome = isIncome)).toInt()
+    }
+
+    /**
+     * Гарантирует непустой справочник категорий: на свежесозданной БД
+     * (миграция не запускается, т.к. файл создаётся сразу v4) засевает
+     * дефолтный набор.
+     */
+    suspend fun ensureDefaultCategories() {
+        if (db.categoryDao().count() == 0) {
+            for (n in CategoryEntity.DEFAULT_EXPENSE)
+                db.categoryDao().insert(CategoryEntity(name = n, isIncome = false))
+            for (n in CategoryEntity.DEFAULT_INCOME)
+                db.categoryDao().insert(CategoryEntity(name = n, isIncome = true))
+        }
+    }
+
+    // ---------- Экран статистики ----------
+
+    /** Первая и последняя дата (ключ периода), по которой есть непустые суммы. */
+    suspend fun minPeriodKey(acc: Int, cur: String, pt: PeriodType): String? =
+        db.statDao().minPeriodKey(acc, cur, pt.name)
+
+    suspend fun maxPeriodKey(acc: Int, cur: String, pt: PeriodType): String? =
+        db.statDao().maxPeriodKey(acc, cur, pt.name)
+
+    /** Разбивка сумм по категориям за конкретный период (для бар-чартов). */
+    suspend fun periodByCategory(acc: Int, cur: String, pt: PeriodType, key: String): List<CategorySum> =
+        db.statDao().periodByCategory(acc, cur, pt.name, key)
+
+    // ---------- Счета ----------
 
     /**
      * Добавление нового счёта: вставка в `accounts` + создание нулевых строк
@@ -109,16 +159,25 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
     /**
      * Прибавляет (sign = +1) или вычитает (sign = -1) вклад транзакции
      * в каждый из периодов (день/неделя/месяц/год) её валюты.
+     * Дельта пишется в две строки на период: агрегирующую (categoryId = 0,
+     * читается точечно дашбордом) и в строку категории (разбивка для
+     * экрана статистики). Полный скан транзакций не выполняется.
      */
     private suspend fun applyDelta(t: TransactionEntity, sign: Double) {
         val inc = if (t.isIncome) t.amount * sign else 0.0
         val exp = if (t.isIncome) 0.0 else t.amount * sign
         for (p in PeriodType.entries) {
             val key = p.keyOf(t.timestamp)
+            // агрегирующая строка периода (для дашборда и границ истории)
             db.statDao().insertIfAbsent(
-                StatEntity(t.accountId, p.name, key, t.currencyCode, 0.0, 0.0)
+                StatEntity(t.accountId, p.name, key, t.currencyCode, StatEntity.AGGREGATE_ID, 0.0, 0.0)
             )
-            db.statDao().addDelta(t.accountId, p.name, key, t.currencyCode, inc, exp)
+            db.statDao().addDelta(t.accountId, p.name, key, t.currencyCode, StatEntity.AGGREGATE_ID, inc, exp)
+            // строка категории (для разбивки на экране статистики)
+            db.statDao().insertIfAbsent(
+                StatEntity(t.accountId, p.name, key, t.currencyCode, t.categoryId, 0.0, 0.0)
+            )
+            db.statDao().addDelta(t.accountId, p.name, key, t.currencyCode, t.categoryId, inc, exp)
         }
     }
 }

@@ -92,13 +92,19 @@ class DbHolder @Inject constructor(
 
     fun accountDao(): AccountDao = db().accountDao()
 
+    fun categoryDao(): CategoryDao = db().categoryDao()
+
     /** Публичная контрольная точка для диагностики (пишет в файл). */
     fun checkpoint(tag: String) = CrashLog.mark(ctx, tag)
 
     private fun build(passphrase: ByteArray): AppDatabase =
         Room.databaseBuilder(ctx, AppDatabase::class.java, AppDatabase.DB_NAME)
             .openHelperFactory(SupportOpenHelperFactory(passphrase))
-            .addMigrations(AppDatabase.MIGRATION_1_2, AppDatabase.MIGRATION_2_3)
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4
+            )
             .fallbackToDestructiveMigration()
             .build()
 

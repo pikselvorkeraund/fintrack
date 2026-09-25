@@ -72,16 +72,18 @@ MainActivity.kt           — @AndroidEntryPoint; единственная Activ
 
 data/
   local/
-    AppDatabase.kt        — @Database v3, DAO-и, MIGRATION_1_2 + MIGRATION_2_3
+    AppDatabase.kt        — @Database v4, DAO-и, MIGRATION_1_2 + MIGRATION_2_3 + MIGRATION_3_4
     DbHolder.kt           — ленивое открытие зашифрованной БД (см. §5)
     TransactionDao.kt     — CRUD + keyset-пагинация (по счёту + валюте)
-    StatDao.kt            — инкрементальные суммы (по счёту + периоду + валюте)
+    StatDao.kt            — инкрементальные суммы (счёт + период + валюта + категория)
     AccountDao.kt         — CRUD справочника счетов
+    CategoryDao.kt        — CRUD справочника категорий (listAll/byName/insert)
   model/
     Currency.kt           — enum валют (code/symbol/displayName)
     AccountEntity.kt      — таблица `accounts` (id, name, color) + палитра из 12 цветов
-    TransactionEntity.kt  — таблица `transactions` (с accountId + индекс)
-    StatEntity.kt         — PeriodType + таблица `stats` (PK включает accountId) (см. §7)
+    CategoryEntity.kt     — таблица `categories` (id, name, isIncome) + палитра цветов для графиков
+    TransactionEntity.kt  — таблица `transactions` (с accountId + categoryId + индексы)
+    StatEntity.kt         — PeriodType (с ключами и shift) + таблица `stats` (см. §7)
   repository/
     TransactionRepository.kt — бизнес-логика + транзакции + CRUD счетов (см. §6)
   security/
@@ -94,19 +96,21 @@ di/
 
 ui/
   components/PatternLock.kt   — Canvas-виджет 3×3 узора
-  locale/AppLocale.kt         — Strings, StringsEn/Ru, LocalStrings, cat()
-  navigation/AppNavGraph.kt   — NavHost: lock → main → settings / accounts
+  locale/AppLocale.kt         — Strings, StringsEn/Ru, LocalStrings, cat(), periodTitle()
+  navigation/AppNavGraph.kt   — NavHost: lock → main → settings / accounts / stats
   screens/
     LockScreen.kt             — экран узора
-    DashboardScreen.kt        — главный экран (см. §8)
+    DashboardScreen.kt        — главный экран + AddDlg (см. §8)
     AccountsScreen.kt         — CRUD-справочник счетов
     SettingsScreen.kt         — выбор языка
+    StatsScreen.kt            — статистика за период: бар-чарты по категориям (см. §8)
   theme/Theme.kt              — Material3 dark/light палитра
   viewmodel/
     LockViewModel.kt          — старт-ап/вход/вайп
-    FinanceViewModel.kt       — состояние дашборда (см. §8)
+    FinanceViewModel.kt       — состояние дашборда + справочник категорий (см. §8)
     AccountsViewModel.kt      — CRUD счетов, переключение текущего
     SettingsViewModel.kt      — обёртка языка
+    StatsViewModel.kt         — состояние экрана статистики (см. §8)
 ```
 
 ---
@@ -125,7 +129,10 @@ ui/
      (назад на лок-экран уже нельзя);
    - `main` (Dashboard) → кнопка настроек → `settings` → `popBackStack()`;
    - `main` (Dashboard) → тап по названию счёта в TopAppBar → `accounts`
-     → `popBackStack()` (возврат без смены) или `onSwitchAccount` + `popBackStack()`.
+     → `popBackStack()` (возврат без смены) или `onSwitchAccount` + `popBackStack()`;
+   - `main` (Dashboard) → тап по карточке статистики (День/Неделя/Месяц/Год) →
+     `stats/{currency}` (валюта дашборда передаётся аргументом и читается
+     StatsViewModel через SavedStateHandle) → `popBackStack()`.
 
 Экраны получают ViewModel через `hiltViewModel()`.
 
@@ -186,15 +193,27 @@ ui/
 
 `transactions` ([`TransactionEntity`](app/src/main/java/com/example/financetracker/data/model/TransactionEntity.kt)):
 `id` (PK, autoGenerate), `accountId` (Int, NOT NULL), `amount`, `currencyCode`,
-`category`, `note`, `isIncome`, `timestamp`. Индекс `(accountId, currencyCode, id)`.
+`categoryId` (Int, NOT NULL — ссылка на `categories.id`), `note`, `isIncome`,
+`timestamp`. Индексы `(accountId, currencyCode, id)` и `(categoryId)`.
+
+`categories` ([`CategoryEntity`](app/src/main/java/com/example/financetracker/data/model/CategoryEntity.kt)):
+`id` (PK, autoGenerate), `name` (TEXT — ключ дефолтной категории из карты
+локализации либо введённое пользователем имя как есть), `isIncome` (Boolean —
+разделяет списки расходов и доходов). Справочник глобальный (не привязан
+к счёту/валюте), порядок = возрастание id (новые добавляются в конец).
+Палитра `PALETTE` (16 цветов) и `colorFor(id)` дают детерминированный цвет
+столбика графика по id категории.
 
 `stats` ([`StatEntity`](app/src/main/java/com/example/financetracker/data/model/StatEntity.kt)):
-PK = составной `(accountId, periodType, periodKey, currencyCode)`,
-поля `income`, `expense`.
+PK = составной `(accountId, periodType, periodKey, currencyCode, categoryId)`,
+поля `income`, `expense`. `categoryId = AGGREGATE_ID (0)` — агрегирующая
+строка периода (итог по валюте без разбивки: читается дашбордом точечно
+по PK и используется для границ истории MIN/MAX); `categoryId > 0` —
+вклад категории (разбивка для бар-чартов экрана статистики).
 
 ### Миграции
 [`AppDatabase`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt)
-имеет `version = 3`:
+имеет `version = 4`:
 - `MIGRATION_1_2` — создаёт `stats` (без `accountId`) и заполняет её
   агрегацией из `transactions` по всем периодам.
 - `MIGRATION_2_3` — вводит многоучётность:
@@ -204,6 +223,25 @@ PK = составной `(accountId, periodType, periodKey, currencyCode)`,
      + создание индекса `(accountId, currencyCode, id)`.
   3. Пересоздаёт `stats` с `accountId` в составном PK,
      переносит данные (все со счётом 1) из `transactions`.
+- `MIGRATION_3_4` ( [`AppDatabase.MIGRATION_3_4`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt:191) ) — справочник
+  категорий и статистика по категориям:
+  1. Создаёт `categories` и засевает дефолтные категории: сначала расходные
+     (`DEFAULT_EXPENSE`), затем доходные (`DEFAULT_INCOME`) — те же ключи,
+     что переводятся картой в `AppLocale`.
+  2. Перестраивает таблицу `transactions` (create `transactions_new` +
+     `INSERT..SELECT` + drop + rename): колонка `category TEXT NOT NULL`
+     из v3 в сущности v4 отсутствует, и `ALTER ADD categoryId` оставил бы
+     NOT NULL-колонку без значения — INSERT Room'а падал бы. В новой таблице
+     `categoryId` вычисляется подзапросом по (name, isIncome) справочника
+     (фолбэк — «Other» того же типа, посеян всегда); старые id сохраняются.
+  3. Создаёт индексы на переименованной таблице ровно как объявлены в v4:
+     `(accountId, currencyCode, id)` и `(categoryId)` (старые удалены вместе
+     со старой таблицей).
+  4. Пересоздаёт `stats` с `categoryId` в составном PK и заполняет её
+     из уцелевших транзакций: агрегирующие строки `categoryId=0` на период
+     и строки по категориям. Ключи агрегации — private data class'ы
+     `AggKey`/`CatKey` (Array в HashMap сравнивался бы по ссылке и
+     рассыпал дубли).
 
 `DbHolder.build()` регистрирует обе миграции:
 `addMigrations(MIGRATION_1_2, MIGRATION_2_3)` плюс
@@ -235,6 +273,18 @@ PK = составной `(accountId, periodType, periodKey, currencyCode)`,
   `renameAccount(id, name)` — переименование; `deleteAccount(id)` — каскад
   (transactions + stats + accounts) в `withTransaction`;
   `listAccounts()` — список всех; `accountCount()` — количество.
+- **CRUD категорий**: `listCategories()` — весь справочник по возрастанию id
+  (= порядок добавления); `addCategory(name, isIncome)` — trim + проверка на
+  дубль того же типа регистронезависимо (`byName ... COLLATE NOCASE`),
+  при совпадении возвращает id существующей, иначе вставляет новую и
+  возвращает её id (null при пустом имени); `ensureDefaultCategories()` —
+  засевает дефолтный набор на свежесозданной БД (миграции не запускаются,
+  когда файл создаётся сразу v4).
+- **Для экрана статистики**: `minPeriodKey`/`maxPeriodKey(acc, cur, pt)` —
+  границы истории по агрегирующим строкам (MIN/MAX periodKey; формат ключей
+  гарантирует, что лексикографический порядок совпадает с хронологическим),
+  `periodByCategory` — разбивка сумм по категориям за конкретный период
+  (`List<CategorySum>`).
 
 ---
 
@@ -243,12 +293,22 @@ PK = составной `(accountId, periodType, periodKey, currencyCode)`,
 [`PeriodType`](app/src/main/java/com/example/financetracker/data/model/StatEntity.kt:15):
 `TOTAL` (ключ `""`), `DAY` (`yyyy-MM-dd`), `WEEK` (`yyyy-Www`, ISO), `MONTH`
 (`yyyy-MM`), `YEAR` (`yyyy`). Каждый период вычисляет ключ из `timestamp`
-в системной таймзоне (`dateOf()`).
+в системной таймзоне (`dateOf()`). Формат выбран так, что строковое
+сравнение ключей совпадает с хронологическим (это используют MIN/MAX
+границ истории).
 
-Вклад транзакции идёт ровно в один ключ каждого периода её валюты. Итог по
-валюте за всё время = строка `TOTAL`. Суммы за день/неделю/месяц/год на
-дашборде = точечные запросы по текущим ключам. Никаких `SUM()` по всей
-таблице `transactions`.
+Для навигации по периодам у каждого типа есть:
+`startDateOf(key)` — первый день периода (ISO-неделя через 4 января
++ weekOfWeekBasedYear), `shift(key, delta)` — сдвиг ключа на delta
+периодов (день/неделя/месяц/год), `currentKey()` — ключ текущего периода.
+Используется экраном статистики для листания «назад/вперёд» до границ БД.
+
+Вклад транзакции идёт ровно в один ключ каждого периода её валюты —
+в ДВЕ строки: агрегирующую (`categoryId = 0`, читается дашбордом точечно)
+и строку категории (для разбивки). Итог по валюте за всё время = строка
+`TOTAL`. Суммы за день/неделю/месяц/год на дашборде = точечные запросы по
+текущим ключам из агрегирующих строк. Никаких `SUM()` по всей таблице
+`transactions`.
 
 ---
 
@@ -268,7 +328,12 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 - `loadMore()` — следующая страница от `items.last().id`, с защитой от гонок.
 - `refreshTotals()` → `refreshPeriods()` — перечитывает TOTAL и 4 периода
   (все запросы к `stats` по `accountId + currencyCode`).
-- `add(...)` — пишет в БД (с `accountId` из `SettingsRepository`),
+- `categories: StateFlow<List<CategoryEntity>>` — справочник категорий,
+  загружается в `loadAccount()` (там же `ensureDefaultCategories()`);
+  `addCategory(name, isIncome): Int?` — создаёт категорию и обновляет
+  справочник (используется кнопкой «+ Добавить новую» в AddDlg).
+- `add(amount, categoryId, note, income, timestamp)` — пишет в БД (с
+  `accountId` из `SettingsRepository` и выбранной датой записи),
   затем **вставляет запись в начало окна без перечитывания**.
 - `remove(t)` — удаляет, фильтрует из окна, при опустошении окна перечитывает.
 - Все обращения к БД в `try/catch`; ошибка → безопасное пустое состояние.
@@ -300,8 +365,10 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 3. `LazyColumn` с keyset-ленивой загрузкой: `LaunchedEffect` + `snapshotFlow`
    по `LazyListState` триггерит `vm.loadMore()` за 3 элемента до конца;
    внизу спиннер при `loadingMore`; пустое состояние `s.noRecords` с
-   подстановкой `{CURRENCY}` (см. §10).
-4. FAB → `AddDlg` (доход/расход, сумма, категория, заметка).
+   подстановкой `{CURRENCY}` (см. §10). Категория в карточке отображается
+   через `catById[categoryId]` (имена берёт из справочника БД), дата —
+   из `timestamp` записи (в т.ч. изменённая пользователем).
+4. FAB → `AddDlg` (доход/расход, сумма, категория, заметка) — см. §8.1.
 
 **TopAppBar**: вместо статического `s.appTitle` — название текущего счёта
 (`acc?.name ?: s.appTitle`) в виде **тональной кнопки-пилюли**
@@ -319,6 +386,69 @@ account» / RU «Сменить счёт»). Все операции
 - `viewed` — просмотр комментария записи по тапу на карточку.
 - `toDelete` — подтверждение удаления (`AlertDialog` с категорией и суммой).
 - `BackHandler` отключён, пока открыт любой диалог или FAB-окно.
+
+**Карточки компактной статистики — кнопки**: каждая (`День/Неделя/Месяц/Год`)
+окружена `Modifier.clickable(role = Role.Button, onClickLabel = s.statsTitle)`
+и ведёт на экран `stats` (`onOpenStats`). Явность кликабельности — вариант V1:
+мини-иконка `BarChart` слева от подписи периода и `ChevronRight` справа,
+ripple/onClickLabel добавлены через clip+clickable поверх Card.
+
+### 8.1 AddDlg (диалог добавления записи)
+[`AddDlg`](app/src/main/java/com/example/financetracker/ui/screens/DashboardScreen.kt:388)
+— `AlertDialog` с параметрами `currency`, `categories` (справочник из БД),
+`onCreateCategory(name, isIncome): Int?`, `ok(amount, categoryId, note,
+isIncome, timestamp)`. Внутри:
+- **Сумма**: `OutlinedTextField` с `KeyboardOptions(keyboardType = Decimal)`
+  и фильтром ввода (цифры + запятая/точка); парсинг `replace(',', '.')`,
+  невалидный ввод подсвечивается `isError`; кнопка «Добавить» неактивна,
+  пока сумма не положительна или не выбрана категория.
+- **Тип** (Расход/Доход) — чипы `FilterChip`, **справа в той же строке** —
+  `FilledTonalButton` с иконкой `CalendarMonth` и текущими датой/временем
+  записи (`dd.MM HH:mm`, `SimpleDateFormat`). Тап открывает
+  `DatePickerDialog` (Material3, UTC-конвертация `initialSelectedDateMillis`
+  и обратно), после ОК сразу — диалог с `TimePicker` (`rememberTimePickerState`,
+  24ч). Результат пикеров — `ts`, уходит в `ok` и далее в `timestamp`.
+  Даты в будущем разрешены (планирование).
+- **Категория**: `ExposedDropdownMenuBox` по отфильтрованному `catsFor`
+  (справочник БД по `isIncome` выбранного типа, порядок id). В конце списка
+  — пункт «+ Добавить новую» (`Icons.Default.Add` + `s.addNewCategory`):
+  открывает вложенный `AlertDialog` с полем названия (по одному в строке)
+  и кнопками ОК (`s.ok`) / Отмена (`s.cancel`); ОК создаёт категорию через
+  `onCreateCategory`, выбирает её (`catId = id`) и добавляет в конец списка.
+  Дубликат (NOCASE) выбирает существующую (см. репозиторий §6).
+  При смене типа выбранная категория, не принадлежащая новому типу,
+  откатывается на первую подходящую (`effectiveCat`).
+- `note` — однострочное поле (как было).
+
+### 8.2 StatsScreen (экран статистики)
+[`StatsScreen`](app/src/main/java/com/example/financetracker/ui/screens/StatsScreen.kt:39)
++ [`StatsViewModel`](app/src/main/java/com/example/financetracker/ui/viewmodel/StatsViewModel.kt:45):
+структура Column:
+1. `TopAppBar` с кнопкой «Назад» (`Icons.AutoMirrored.Filled.ArrowBack` →
+   `popBackStack()`) и заголовком `s.statsTitle`.
+2. Строка `FilterChip`: День/Неделя/Месяц/Год (`vm.setType`).
+3. Строка периода: `IconButton ChevronLeft` | заголовок периода
+   (`s.periodTitle(type, key)` — см. §9) | `IconButton ChevronRight`.
+   Кнопки листания (`vm.shift(±1)`) отключаются у границ истории
+   (`minKey`/`maxKey` из `stats`, `canGoBack/canGoForward` в состоянии);
+   стартовый ключ = текущий период, но не вне границ.
+4. Два `BarChartCard` (Расходы сверху — красный, Доходы снизу — зелёный):
+   строка заголовка + «Всего» за период (реальные итоги из агрегирующей
+   строки `stats`, не искажённые топ-N), ниже — горизонтальные лежачие
+   столбики (полоски с весом `value/max`, скругление, фон track
+   `colorScheme.surface`), не больше `TOP_N = 7` категорий с наибольшим
+   значением, отсортированы по убыванию; подпись = категория (`s.cat(name)`),
+   цвет = `CategoryEntity.colorFor(id)`. Пустой период → `s.noStatsData`.
+   Рисование чистым Compose (`Box`+`weight(frac)`), без сторонних библиотек
+   (офлайн-политика).
+
+### 8.3 Прочие ViewModel
+[`StatsViewModel`](app/src/main/java/com/example/financetracker/ui/viewmodel/StatsViewModel.kt:45)
+— `state: StateFlow<StatsState>` (type, key, minKey, maxKey, currency,
+expenseBars, incomeBars, totalExpense, totalIncome, loading, empty).
+Валюта активна та же, что на дашборде — приходит навигационным аргументом
+`stats/{currency}` из `SavedStateHandle`. Все обращения к БД в `try/catch`
+с безопасным пустым состоянием.
 
 ### AccountsScreen
 [`ui/screens/AccountsScreen.kt`](app/src/main/java/com/example/financetracker/ui/screens/AccountsScreen.kt)
@@ -343,7 +473,15 @@ account» / RU «Сменить счёт»). Все операции
 [`ui/locale/AppLocale.kt`](app/src/main/java/com/example/financetracker/ui/locale/AppLocale.kt)
 — `data class Strings` со всеми строками; два экземпляра `StringsEn` и
 `StringsRu`; `LocalStrings` (`compositionLocalOf { StringsEn }`);
-`stringsFor(lang)`; `Strings.cat(name)` — перевод категории из `categories`.
+`stringsFor(lang)`; `Strings.cat(name)` — перевод категории из `categories`
+(для дефолтных ключей; пользовательские имена возвращаются как есть —
+перевести динамические данные нельзя, это ожидаемое поведение).
+Поле `langCode` ("en"/"ru") хранится в `Strings` и используется
+`Strings.periodTitle(pt, key)` — человекочитаемый заголовок периода для
+экрана статистики: `DAY` → «25 сентября 2026» (d MMMM yyyy), `WEEK` →
+«21.09.2026-27.09.2026», `MONTH` → «Сентябрь 2026» (MMMM yyyy), `YEAR` →
+«2026 год» / «2026». Названия месяцев/дней форматирует `java.time` по
+`Locale(langCode)`, поэтому они не дублируются в `Strings`.
 
 **Правило:** любая новая строка UI добавляется в поле `Strings` И в оба
 экземпляра (En и Ru). Категории хранятся в `catsEn`/`catsRu` по ключам
@@ -363,8 +501,12 @@ account» / RU «Сменить счёт»). Все операции
 (`code`, `symbol`, `displayName`). Смена валюты — `vm.setCurrency()`; список и
 статистика автоматически фильтруются по `code`. Миграции БД не нужны.
 
-**Новая категория:** добавить ключ+перевод в `catsEn` и `catsRu` и в списки
-`cats` в `AddDlg`.
+**Новая категория:** пользовательские категории создаются из `AddDlg`
+(пункт «+ Добавить новую») и хранятся в таблице `categories`
+(`TransactionRepository.addCategory`). Чтобы добавить **дефолтную**
+категорию (общую для всех установок) — добавить ключ+перевод в `catsEn`
+и `catsRu` и в `CategoryEntity.DEFAULT_EXPENSE`/`DEFAULT_INCOME`
+(используются миграцией v4 и `ensureDefaultCategories()`).
 
 **Новый экран:** Composable в `ui/screens/` + ViewModel (если нужен) в
 `ui/viewmodel/` + `composable("route")` в `AppNavGraph`.

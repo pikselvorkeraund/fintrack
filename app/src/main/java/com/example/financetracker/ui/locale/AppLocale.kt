@@ -1,6 +1,10 @@
 package com.example.financetracker.ui.locale
 
 import androidx.compose.runtime.compositionLocalOf
+import com.example.financetracker.data.model.PeriodType
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 enum class Language { EN, RU }
 
@@ -53,6 +57,18 @@ data class Strings(
     val errCurrentAccount: String,
     val errNameEmpty: String,
     val changeAccount: String,
+    val addNewCategory: String,
+    val newCategoryTitle: String,
+    val categoryName: String,
+    val ok: String,
+    val pickDate: String,
+    val pickTime: String,
+    val dateTime: String,
+    val statsTitle: String,
+    val noStatsData: String,
+    val total: String,
+    /** Тег языка для java.time-форматирования заголовков периодов ("en"/"ru"). */
+    val langCode: String,
     val categories: Map<String, String>
 )
 
@@ -119,6 +135,17 @@ val StringsEn = Strings(
     errCurrentAccount = "Cannot delete the current account. Switch first.",
     errNameEmpty = "Name cannot be empty",
     changeAccount = "Change account",
+    addNewCategory = "+ Add new",
+    newCategoryTitle = "New category",
+    categoryName = "Name",
+    ok = "OK",
+    pickDate = "Select date",
+    pickTime = "Select time",
+    dateTime = "Date & time",
+    statsTitle = "Statistics",
+    noStatsData = "No data for this period",
+    total = "Total",
+    langCode = "en",
     categories = catsEn
 )
 
@@ -171,6 +198,17 @@ val StringsRu = Strings(
     errCurrentAccount = "Нельзя удалить текущий счёт. Сначала переключитесь.",
     errNameEmpty = "Название не может быть пустым",
     changeAccount = "Сменить счёт",
+    addNewCategory = "+ Добавить новую",
+    newCategoryTitle = "Новая категория",
+    categoryName = "Название",
+    ok = "ОК",
+    pickDate = "Выберите дату",
+    pickTime = "Выберите время",
+    dateTime = "Дата и время",
+    statsTitle = "Статистика",
+    noStatsData = "Нет данных за период",
+    total = "Всего",
+    langCode = "ru",
     categories = catsRu
 )
 
@@ -179,3 +217,29 @@ fun Strings.cat(name: String): String = categories[name] ?: name
 fun stringsFor(lang: Language): Strings = if (lang == Language.RU) StringsRu else StringsEn
 
 val LocalStrings = compositionLocalOf { StringsEn }
+
+/**
+ * Человекочитаемый заголовок периода для экрана статистики.
+ * Названия месяцев/дней форматируются через java.time по langCode строкового
+ * набора (RU/EN), поэтому не дублируются как отдельные UI-строки.
+ */
+fun Strings.periodTitle(pt: PeriodType, key: String): String {
+    val loc = Locale(langCode)
+    return when (pt) {
+        PeriodType.TOTAL -> ""
+        PeriodType.DAY -> LocalDate.parse(key, DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+            .format(DateTimeFormatter.ofPattern("d MMMM yyyy", loc))
+        PeriodType.WEEK -> {
+            val start = pt.startDateOf(key)
+            val end = start.plusDays(6)
+            val f = DateTimeFormatter.ofPattern("dd.MM.yyyy")
+            "${start.format(f)}-${end.format(f)}"
+        }
+        PeriodType.MONTH -> {
+            val y = key.substringBefore("-").toInt()
+            val m = key.substringAfter("-").toInt()
+            LocalDate.of(y, m, 1).format(DateTimeFormatter.ofPattern("MMMM yyyy", loc))
+        }
+        PeriodType.YEAR -> if (langCode == "ru") "$key год" else key
+    }
+}

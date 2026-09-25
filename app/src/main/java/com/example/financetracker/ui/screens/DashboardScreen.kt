@@ -13,10 +13,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -29,6 +33,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
@@ -37,6 +42,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.compose.foundation.border
+import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.Currency
 import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.TransactionEntity
@@ -46,18 +52,27 @@ import com.example.financetracker.ui.viewmodel.FinanceViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.util.*
 
 @Composable
 fun DashboardScreen(
     vm: FinanceViewModel = hiltViewModel(),
     onOpenSettings: () -> Unit,
-    onOpenAccounts: () -> Unit
+    onOpenAccounts: () -> Unit,
+    onOpenStats: () -> Unit
 ) {
     val s = LocalStrings.current
     val ui by vm.ui.collectAsState()
     val cur by vm.currency.collectAsState()
     val acc by vm.account.collectAsState()
+    val cats by vm.categories.collectAsState()
+
+    // Имя категории по её id (для карточек списка и диалогов)
+    val catById = remember(cats) { cats.associate { it.id to it.name } }
+    fun labelFor(id: Int): String = s.cat(catById[id] ?: "")
 
     // Перезагружаем данные при первом композе дашборда
     // (FinanceViewModel.init отработал ещё до открытия БД)
@@ -191,7 +206,9 @@ fun DashboardScreen(
                 }
             }
 
-            // Компактная статистика: чистая сумма за день/неделю/месяц/год
+            // Компактная статистика: карточки-кнопки за день/неделю/месяц/год.
+            // Иконка графика + chevron показывают, что карточка ведёт
+            // на экран статистики за соответствующим периодом.
             if (balanceExpanded && ui.periods.isNotEmpty()) {
                 Row(
                     Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
@@ -199,16 +216,35 @@ fun DashboardScreen(
                 ) {
                     ui.periods.forEach { st ->
                         Card(
-                            Modifier.weight(1f),
+                            Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable(role = Role.Button, onClickLabel = s.statsTitle) { onOpenStats() },
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
                             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                Text(
-                                    periodLabel(s, st.type),
-                                    style = MaterialTheme.typography.labelSmall
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.BarChart,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(12.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        periodLabel(s, st.type),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Icon(
+                                        Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Text(
                                     compact(st.net),
                                     style = MaterialTheme.typography.bodyMedium,
@@ -265,7 +301,7 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(Modifier.weight(1f)) {
-                                Text(s.cat(t.category), fontWeight = FontWeight.Medium)
+                                Text(labelFor(t.categoryId), fontWeight = FontWeight.Medium)
                                 Text(
                                     SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(t.timestamp)),
                                     style = MaterialTheme.typography.bodySmall
@@ -297,7 +333,7 @@ fun DashboardScreen(
         AlertDialog(
             onDismissRequest = { viewed = null },
             title = {
-                Text("${s.cat(t.category)}: ${fmt(t.amount, Currency.fromCode(t.currencyCode))}")
+                Text("${labelFor(t.categoryId)}: ${fmt(t.amount, Currency.fromCode(t.currencyCode))}")
             },
             text = {
                 Column(
@@ -323,7 +359,7 @@ fun DashboardScreen(
             onDismissRequest = { toDelete = null },
             title = { Text(s.deleteTitle) },
             text = {
-                Text("${s.cat(t.category)}: ${fmt(t.amount, Currency.fromCode(t.currencyCode))}")
+                Text("${labelFor(t.categoryId)}: ${fmt(t.amount, Currency.fromCode(t.currencyCode))}")
             },
             confirmButton = {
                 Button(onClick = { vm.remove(t); toDelete = null }) { Text(s.delete) }
@@ -333,50 +369,121 @@ fun DashboardScreen(
     }
 
     if (dlg) {
-        AddDlg(cur, { dlg = false }) { a, c, n, i ->
-            vm.add(a, c, n, i)
-            dlg = false
-        }
+        AddDlg(
+            currency = cur,
+            categories = cats,
+            onCreateCategory = { name, inc -> vm.addCategory(name, inc) },
+            dismiss = { dlg = false },
+            ok = { a, c, n, i, t -> vm.add(a, c, n, i, t); dlg = false }
+        )
     }
 }
 
+/**
+ * Диалог добавления записи: числовая клавиатура суммы, дата/время (календарь
+ * + часы) кнопкой справа от выбора типа, категории из справочника БД
+ * с пунктом «+ Добавить новую» и собственным диалогом ввода.
+ */
 @Composable
-fun AddDlg(currency: Currency, dismiss: () -> Unit, ok: (Double, String, String, Boolean) -> Unit) {
+fun AddDlg(
+    currency: Currency,
+    categories: List<CategoryEntity>,
+    onCreateCategory: suspend (String, Boolean) -> Int?,
+    dismiss: () -> Unit,
+    ok: (Double, Int, String, Boolean, Long) -> Unit
+) {
     val s = LocalStrings.current
+    val scope = rememberCoroutineScope()
     var amt by remember { mutableStateOf("") }
-    var cat by remember { mutableStateOf("Food") }
     var note by remember { mutableStateOf("") }
     var inc by remember { mutableStateOf(false) }
+    var catId by remember { mutableStateOf<Int?>(null) }
+    var ts by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showDate by remember { mutableStateOf(false) }
+    var showTime by remember { mutableStateOf(false) }
+    var newCat by remember { mutableStateOf(false) }
+    var newCatName by remember { mutableStateOf("") }
 
-    val cats = if (inc) listOf("Salary", "Freelance", "Invest", "Gift", "Other")
-               else listOf("Food", "Transport", "Housing", "Fun", "Health", "Other")
+    // Категории текущего типа; выбранная сбрасывается на первую,
+    // если после переключения типа она не подходит
+    val catsFor = categories.filter { it.isIncome == inc }
+    val effectiveCat = catId?.takeIf { id -> catsFor.any { it.id == id } }
+        ?: catsFor.firstOrNull()?.id
+    val parsedAmt = amt.replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 }
 
     AlertDialog(
         onDismissRequest = dismiss,
         title = { Text(if (inc) s.addIncome else s.addExpense) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     FilterChip(!inc, { inc = false }, { Text(s.expenseChip) })
                     Spacer(Modifier.width(8.dp))
                     FilterChip(inc, { inc = true }, { Text(s.incomeChip) })
+                    Spacer(Modifier.weight(1f))
+                    // Текущие дата и время записи — кнопка, открывающая пикеры
+                    FilledTonalButton(
+                        onClick = { showDate = true },
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.CalendarMonth,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(ts)),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
                 }
 
-                OutlinedTextField(amt, { amt = it }, label = { Text("${s.amount} ${currency.symbol}") }, singleLine = true)
+                // Клавиатура только для чисел: фильтруем ввод, кроме цифр
+                // и десятичных разделителей (запятая трактуется как точка)
+                OutlinedTextField(
+                    amt,
+                    { v -> amt = v.filter { it.isDigit() || it == ',' || it == '.' } },
+                    label = { Text("${s.amount} ${currency.symbol}") },
+                    singleLine = true,
+                    isError = amt.isNotEmpty() && parsedAmt == null,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                )
 
                 var ce by remember { mutableStateOf(false) }
                 ExposedDropdownMenuBox(ce, { ce = it }) {
                     OutlinedTextField(
-                        s.cat(cat), {},
+                        s.cat(catsFor.firstOrNull { it.id == effectiveCat }?.name ?: ""), {},
                         readOnly = true,
                         label = { Text(s.category) },
                         modifier = Modifier.menuAnchor(),
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(ce) }
                     )
                     ExposedDropdownMenu(ce, { ce = false }) {
-                        cats.forEach { c ->
-                            DropdownMenuItem(text = { Text(s.cat(c)) }, onClick = { cat = c; ce = false })
+                        catsFor.forEach { c ->
+                            DropdownMenuItem(
+                                text = { Text(s.cat(c.name)) },
+                                onClick = { catId = c.id; ce = false }
+                            )
                         }
+                        // Пункт справочника: создать новую категорию
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(s.addNewCategory)
+                                }
+                            },
+                            onClick = { newCatName = ""; newCat = true; ce = false }
+                        )
                     }
                 }
 
@@ -384,10 +491,90 @@ fun AddDlg(currency: Currency, dismiss: () -> Unit, ok: (Double, String, String,
             }
         },
         confirmButton = {
-            Button(onClick = { amt.toDoubleOrNull()?.let { ok(it, cat, note, inc) } }) { Text(s.add) }
+            Button(
+                enabled = parsedAmt != null && effectiveCat != null,
+                onClick = {
+                    val a = parsedAmt ?: return@Button
+                    val c = effectiveCat ?: return@Button
+                    ok(a, c, note, inc, ts)
+                }
+            ) { Text(s.add) }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text(s.cancel) } }
     )
+
+    // Пикер даты; после ОК сразу открывается пикер времени
+    if (showDate) {
+        val initialUtc = Instant.ofEpochMilli(ts)
+            .atZone(ZoneId.systemDefault()).toLocalDate()
+            .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val dState = rememberDatePickerState(initialSelectedDateMillis = initialUtc)
+        DatePickerDialog(
+            onDismissRequest = { showDate = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    dState.selectedDateMillis?.let { m ->
+                        val d = Instant.ofEpochMilli(m).atZone(ZoneOffset.UTC).toLocalDate()
+                        val t = Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).toLocalTime()
+                        ts = d.atTime(t).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    }
+                    showDate = false
+                    showTime = true
+                }) { Text(s.ok) }
+            }
+        ) {
+            DatePicker(state = dState, title = { Text(s.pickDate, Modifier.padding(start = 20.dp, top = 12.dp)) })
+        }
+    }
+
+    // Пикер времени (часы+минуты), внутри обычного диалога
+    if (showTime) {
+        val ldt = Instant.ofEpochMilli(ts).atZone(ZoneId.systemDefault()).toLocalDateTime()
+        val tState = rememberTimePickerState(initialHour = ldt.hour, initialMinute = ldt.minute, is24Hour = true)
+        AlertDialog(
+            onDismissRequest = { showTime = false },
+            title = { Text(s.pickTime) },
+            text = { TimePicker(state = tState) },
+            confirmButton = {
+                TextButton(onClick = {
+                    ts = ldt.toLocalDate()
+                        .atTime(tState.hour, tState.minute)
+                        .atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
+                    showTime = false
+                }) { Text(s.ok) }
+            },
+            dismissButton = { TextButton(onClick = { showTime = false }) { Text(s.cancel) } }
+        )
+    }
+
+    // Создание новой категории: ввод названия, ОК/Отмена
+    if (newCat) {
+        AlertDialog(
+            onDismissRequest = { newCat = false },
+            title = { Text(s.newCategoryTitle) },
+            text = {
+                OutlinedTextField(
+                    newCatName,
+                    { newCatName = it },
+                    label = { Text(s.categoryName) },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = newCatName.isNotBlank(),
+                    onClick = {
+                        scope.launch {
+                            val id = onCreateCategory(newCatName.trim(), inc)
+                            if (id != null) catId = id
+                            newCat = false
+                        }
+                    }
+                ) { Text(s.ok) }
+            },
+            dismissButton = { TextButton(onClick = { newCat = false }) { Text(s.cancel) } }
+        )
+    }
 }
 
 fun fmt(v: Double, c: Currency) = String.format("%,.2f %s", v, c.symbol)
