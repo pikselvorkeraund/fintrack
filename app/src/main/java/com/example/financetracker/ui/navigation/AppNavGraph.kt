@@ -26,7 +26,9 @@ fun AppNavGraph(settings: SettingsRepository) {
     CompositionLocalProvider(LocalStrings provides stringsFor(lang)) {
         NavHost(nav, startDestination = "lock") {
             composable("lock") {
-                LockScreen(st, vm::onPattern,
+                // vm.setupHint читается при каждой рекомпозиции (st меняется
+                // синхронно с флагом), поэтому подсказка всегда актуальна
+                LockScreen(st, vm.setupHint, vm::onPattern,
                     onOk = { nav.navigate("main") { popUpTo("lock") { inclusive = true } } },
                     onWipe = { vm.reset() })
             }

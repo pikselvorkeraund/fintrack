@@ -12,20 +12,28 @@ import com.example.financetracker.ui.locale.LocalStrings
 import com.example.financetracker.ui.viewmodel.LockState
 
 @Composable
-fun LockScreen(state: LockState, onPattern: (List<Int>) -> Unit, onOk: () -> Unit, onWipe: () -> Unit) {
+fun LockScreen(
+    state: LockState,
+    setupHint: Boolean,
+    onPattern: (List<Int>) -> Unit,
+    onOk: () -> Unit,
+    onWipe: () -> Unit
+) {
     val s = LocalStrings.current
     LaunchedEffect(state) {
         if (state is LockState.Unlocked) onOk()
         if (state is LockState.Wiped) onWipe()
     }
+    // Технический текст диагностики (SIGSEGV, стектрейсы, lastError) больше
+    // не выводится — детали уходят в logcat. Показываем только понятное.
     val msg = when (state) {
         is LockState.Setup -> s.drawPattern
         is LockState.Enter -> s.enterPattern
         is LockState.Error -> when (state.key) {
             "min4" -> s.min4
             "wrong" -> s.wrongPrefix + state.arg
-            "db" -> if (state.arg.isBlank()) s.dbError else s.dbError + ": " + state.arg
-            else -> "Error: ${state.arg}"
+            "db" -> s.dbError
+            else -> s.dbError
         }
         is LockState.Wiped -> s.wiped
         else -> ""
@@ -37,6 +45,14 @@ fun LockScreen(state: LockState, onPattern: (List<Int>) -> Unit, onOk: () -> Uni
             color = if (state is LockState.Error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.height(32.dp))
         PatternLock(isError = state is LockState.Error, onDone = onPattern)
-        if (state is LockState.Wiped) { Spacer(Modifier.height(24.dp)); Button(onClick = onWipe) { Text(s.newPattern) } }
+        // Мелкая подсказка режима: настройка ключа vs регулярный вход
+        Spacer(Modifier.height(24.dp))
+        Text(
+            if (setupHint) s.hintSetup else s.hintEnter,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+        if (state is LockState.Wiped) { Spacer(Modifier.height(16.dp)); Button(onClick = onWipe) { Text(s.newPattern) } }
     }
 }

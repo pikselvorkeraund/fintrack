@@ -161,6 +161,15 @@ ui/
 - Enter: `verify()` → при успехе вывод ключа и `unlock()`; при неудаче
   `shouldWipe()` → `db.lock()` + `plm.wipeAll()` → `Wiped`.
 - Тяжёлое (PBKDF2, IO) уводится в `Dispatchers.Default`/`IO`.
+- Флаг `setupHint` (`plm.isSet == false`, true при `Wiped`/`reset()`,
+  снимается сразу после `save()` в Setup) выбирает мелкую подсказку на
+  [`LockScreen`](app/src/main/java/com/example/financetracker/ui/screens/LockScreen.kt):
+  `hintSetup` («задайте ключ для шифрования») vs `hintEnter`
+  («Введите ключ для входа»).
+- **Техническая диагностика (`CrashLog`, `lastError`, стектрейсы,
+  «likely SIGSEGV») на экран не выводится** — `db.debugInfo()` читается
+  и очищается, детали пишутся в `Log.d("FinTrack", …)`. Пользователь
+  видит только локализованный `dbError`.
 
 **Правило:** никогда не создавайте `AppDatabase` напрямую и не обходите
 `DbHolder`. Инжектите `DbHolder` и берите DAO через `db.dao()`/`db.statDao()`.
@@ -295,8 +304,14 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 4. FAB → `AddDlg` (доход/расход, сумма, категория, заметка).
 
 **TopAppBar**: вместо статического `s.appTitle` — название текущего счёта
-(`acc?.name ?: s.appTitle`) с **тонкой обводкой** (`border(1.dp,
-Color(acc?.color)`) и тапом → `onOpenAccounts()`. Все операции
+(`acc?.name ?: s.appTitle`) в виде **тональной кнопки-пилюли**
+(`RoundedCornerShape(percent = 50)`): полупрозрачный фон
+`Color(acc.color).copy(alpha = 0.15f)`, обводка 1.dp в цвет счёта,
+ведущая точка-индикатор цвета счёта, `maxLines = 1` с ellipsis,
+trailing-иконка `ArrowDropDown`; `clickable(role = Role.Button,
+onClickLabel = s.changeAccount)` — тап открывает `onOpenAccounts()`.
+`onClickLabel` — новая строка в `Strings` (`changeAccount`: EN «Change
+account» / RU «Сменить счёт»). Все операции
 (баланс, история, статистика, добавление, удаление) идут только с
 текущим `accountId` из `SettingsRepository`.
 
@@ -403,6 +418,11 @@ Color(acc?.color)`) и тапом → `onOpenAccounts()`. Все операци�
   используется для вставки в начало окна.
 - `StatDao.insertIfAbsent` (`IGNORE`) + `addDelta` (`UPDATE`) — паттерн
   «upsert дельтой»: создаёт нулевую строку периода, затем прибавляет дельту.
+- **`CrashLog` остаётся инфраструктурой диагностики, но не UI**: контрольные
+  точки пишутся как раньше, при следующем запуске `LockViewModel.init` читает
+  `db.debugInfo()` (это же очищает файлы) и пишет содержимое в logcat.
+  Экран блокировки показывает только `s.dbError` — сообщение вида
+  `Error: no java crash — likely SIGSEGV` пользователю не демонстрируется.
 - `enableBackup="false"` в манифесте — резервное копирование отключено
   осознанно (шифрованная БД + приватность).
 - `bundle { language { enableSplit = false } }` — обе локализации в одном APK.

@@ -4,8 +4,11 @@ package com.example.financetracker.ui.screens
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -13,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
@@ -21,8 +25,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -84,18 +91,44 @@ fun DashboardScreen(
         snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             TopAppBar(title = {
-                Text(
-                    acc?.name ?: s.appTitle,
-                    style = MaterialTheme.typography.titleLarge,
+                // Название текущего счёта — тональная кнопка-пилюля:
+                // полупрозрачный фон и обводка в цвет счёта, точка-индикатор,
+                // стрелка «открыть список счетов», ripple клипается по форме
+                val accColor = Color((acc?.color ?: 0xFF1976D2L).toInt())
+                val pillShape = RoundedCornerShape(percent = 50)
+                Row(
                     modifier = Modifier
-                        .clickable { onOpenAccounts() }
-                        .border(1.dp, Color((acc?.color ?: 0xFF1976D2L).toInt()))
-                        .padding(4.dp)
-                )
-            }, actions = {
-                IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, s.settings)
+                        .clip(pillShape)
+                        .background(accColor.copy(alpha = 0.15f))
+                        .border(1.dp, accColor, pillShape)
+                        .clickable(role = Role.Button, onClickLabel = s.changeAccount) { onOpenAccounts() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(accColor)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        acc?.name ?: s.appTitle,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Icon(
+                        Icons.Default.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = accColor
+                    )
                 }
+            }, actions = {
+                // Сначала выбор валюты, затем шестерёнка настроек
                 var exp by remember { mutableStateOf(false) }
                 Box {
                     TextButton(onClick = { exp = true }) { Text("${cur.code} ${cur.symbol}") }
@@ -107,6 +140,9 @@ fun DashboardScreen(
                             )
                         }
                     }
+                }
+                IconButton(onClick = onOpenSettings) {
+                    Icon(Icons.Default.Settings, s.settings)
                 }
             })
         },

@@ -33,6 +33,8 @@ data class Strings(
     val russian: String,
     val drawPattern: String,
     val enterPattern: String,
+    val hintSetup: String,
+    val hintEnter: String,
     val min4: String,
     val wrongPrefix: String,
     val wiped: String,
@@ -50,6 +52,7 @@ data class Strings(
     val errLastAccount: String,
     val errCurrentAccount: String,
     val errNameEmpty: String,
+    val changeAccount: String,
     val categories: Map<String, String>
 )
 
@@ -96,6 +99,8 @@ val StringsEn = Strings(
     russian = "Русский",
     drawPattern = "Draw pattern (min 4 dots)",
     enterPattern = "Enter pattern",
+    hintSetup = "Set an encryption key to get started",
+    hintEnter = "Enter your key to unlock",
     min4 = "Min 4 dots",
     wrongPrefix = "Wrong. Left: ",
     wiped = "Data wiped after 3 failed attempts. Create new pattern.",
@@ -113,6 +118,7 @@ val StringsEn = Strings(
     errLastAccount = "Cannot delete the last account",
     errCurrentAccount = "Cannot delete the current account. Switch first.",
     errNameEmpty = "Name cannot be empty",
+    changeAccount = "Change account",
     categories = catsEn
 )
 
@@ -145,6 +151,8 @@ val StringsRu = Strings(
     russian = "Русский",
     drawPattern = "Нарисуйте узор (мин. 4 точки)",
     enterPattern = "Введите узор",
+    hintSetup = "Для начала работы задайте ключ для шифрования",
+    hintEnter = "Введите ключ для входа",
     min4 = "Минимум 4 точки",
     wrongPrefix = "Неверно. Осталось: ",
     wiped = "Данные удалены после 3 неверных попыток. Создайте новый узор.",
@@ -162,6 +170,7 @@ val StringsRu = Strings(
     errLastAccount = "Нельзя удалить последний счёт",
     errCurrentAccount = "Нельзя удалить текущий счёт. Сначала переключитесь.",
     errNameEmpty = "Название не может быть пустым",
+    changeAccount = "Сменить счёт",
     categories = catsRu
 )
 
