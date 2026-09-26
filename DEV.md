@@ -131,8 +131,9 @@ ui/
    - `main` (Dashboard) → тап по названию счёта в TopAppBar → `accounts`
      → `popBackStack()` (возврат без смены) или `onSwitchAccount` + `popBackStack()`;
    - `main` (Dashboard) → тап по карточке статистики (День/Неделя/Месяц/Год) →
-     `stats/{currency}` (валюта дашборда передаётся аргументом и читается
-     StatsViewModel через SavedStateHandle) → `popBackStack()`.
+     `stats/{currency}/{periodType}` (валюта дашборда и выбранный тип периода
+     передаются аргументами и читаются StatsViewModel через SavedStateHandle —
+     каждая карточка открывает свой период, не всегда День) → `popBackStack()`.
 
 Экраны получают ViewModel через `hiltViewModel()`.
 
@@ -354,9 +355,14 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 признаки: `vm: FinanceViewModel`, `onOpenSettings`, `onOpenAccounts`.
 структура Column:
 1. Карточка баланса — содержит заголовок «Баланс» и кнопку `IconButton`
-   (`ExpandMore`/`ExpandLess`) для сворачивания/разворачивания. В свернутом
-   состоянии (по умолчанию, `balanceExpanded = false`) виден только заголовок;
-   в развёрнутом — сумма баланса (белый символ валюты через `amountStr()`,
+   (`ExpandMore`/`ExpandLess`) для сворачивания/разворачивания. Состояние
+   хранится В FinanceViewModel как `Map<accountId, Boolean>`
+   (`balanceExpandedMap`/`isBalanceExpanded`/`toggleBalance`) — переживает
+   переходы на Настройки/Статистику/Счёта в рамках сессии, но не сохраняется
+   между запусками (после выхода из приложения баланс снова скрыт). В
+   свернутом состоянии (по умолчанию, для счёта без записи в карте — false)
+   виден только заголовок; в развёрнутом — сумма баланса (белый символ
+   валюты через `amountStr()`,
    число `IncomeGreen` при `≥ 0`, `error` при `< 0`), строка дохода/расхода.
 2. Компактная статистика (`Row` из карточек `weight(1f)`) — чистая сумма за
    `DAY/WEEK/MONTH/YEAR`, мелкий шрифт, формат через `compact()`, цвет
@@ -389,11 +395,13 @@ account» / RU «Сменить счёт»). Все операции
 
 **Карточки компактной статистики — кнопки**: каждая (`День/Неделя/Месяц/Год`)
 окружена `Modifier.clickable(role = Role.Button, onClickLabel = s.statsTitle)`
-и ведёт на экран `stats` (`onOpenStats`). Layout — вариант V1, двухстрочный
-(в узкой колонке `weight(1f)` всё в один ряд не помещается и «съезжает»):
-строка 1 — только подпись периода; строка 2 — иконка `BarChart`, затем
-`compact(net)` (`weight(1f)` + ellipsis) и `ChevronRight` справа.
-ripple/onClickLabel добавлены через clip+clickable поверх Card.
+и ведёт на экран `stats` с СВОИМ периодом (`onOpenStats(st.type)` →
+`stats/{currency}/{periodType}`). Layout — двухстрочный (в узкой колонке
+`weight(1f)` всё в один ряд не помещается и «съезжает»):
+строка 1 — подпись периода слева + `ChevronRight` у правого края
+(`SpaceBetween`); строка 2 — иконка `BarChart` и `compact(net)`
+(ellipsis по длине суммы). ripple/onClickLabel добавлены через
+clip+clickable поверх Card.
 
 ### 8.1 AddDlg (диалог добавления записи)
 [`AddDlg`](app/src/main/java/com/example/financetracker/ui/screens/DashboardScreen.kt:388)
@@ -413,7 +421,8 @@ isIncome, timestamp)`. Внутри:
   Даты в будущем разрешены (планирование).
 - **Категория**: `ExposedDropdownMenuBox` по отфильтрованному `catsFor`
   (справочник БД по `isIncome` выбранного типа, порядок id). В конце списка
-  — пункт «+ Добавить новую» (`Icons.Default.Add` + `s.addNewCategory`):
+  — пункт «Добавить новую» (`Icons.Default.Add` + `s.addNewCategory` — плюс
+  в текст строки НЕ включён, чтобы не дублировать иконку):
   открывает вложенный `AlertDialog` с полем названия (по одному в строке)
   и кнопками ОК (`s.ok`) / Отмена (`s.cancel`); ОК создаёт категорию через
   `onCreateCategory`, выбирает её (`catId = id`) и добавляет в конец списка.
@@ -428,7 +437,10 @@ isIncome, timestamp)`. Внутри:
 структура Column:
 1. `TopAppBar` с кнопкой «Назад» (`Icons.AutoMirrored.Filled.ArrowBack` →
    `popBackStack()`) и заголовком `s.statsTitle`.
-2. Строка `FilterChip`: День/Неделя/Месяц/Год (`vm.setType`).
+2. Строка `FilterChip`: День/Неделя/Месяц/Год (`vm.setType`) — четыре чипа
+   в ряд по `weight(1f)`, `spacedBy(4.dp)`; подписи — `labelSmall`, одна
+   строка (`maxLines=1`, `overflow=Clip`) — стандартный `labelMedium`
+   не влезает в четверть ширины для длинных слов («Неделя», «Месяц»).
 3. Строка периода: `IconButton ChevronLeft` | заголовок периода
    (`s.periodTitle(type, key)` — см. §9) | `IconButton ChevronRight`.
    Кнопки листания (`vm.shift(±1)`) отключаются у границ истории
@@ -448,8 +460,10 @@ isIncome, timestamp)`. Внутри:
 [`StatsViewModel`](app/src/main/java/com/example/financetracker/ui/viewmodel/StatsViewModel.kt:45)
 — `state: StateFlow<StatsState>` (type, key, minKey, maxKey, currency,
 expenseBars, incomeBars, totalExpense, totalIncome, loading, empty).
-Валюта активна та же, что на дашборде — приходит навигационным аргументом
-`stats/{currency}` из `SavedStateHandle`. Все обращения к БД в `try/catch`
+Валюта и тип периода активны те же, что на дашборде — приходят
+навигационными аргументами `stats/{currency}/{periodType}` из
+`SavedStateHandle` (`periodType` — имя константы `PeriodType`, парсится
+`valueOf` с фолбэком на DAY). Все обращения к БД в `try/catch`
 с безопасным пустым состоянием.
 
 ### AccountsScreen

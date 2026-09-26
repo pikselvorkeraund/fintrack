@@ -64,17 +64,28 @@ fun StatsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            // Переключатель типа статистики
+            // Переключатель типа статистики: 4 чипа в ряд (каждый weight=1f).
+            // Подписи — labelSmall + одна строка, иначе длинные слова
+            // («Неделя», «Месяц», «Year») не вмещаются в четверть ширины
             Row(
                 Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 listOf(PeriodType.DAY, PeriodType.WEEK, PeriodType.MONTH, PeriodType.YEAR).forEach { pt ->
                     FilterChip(
                         selected = st.type == pt,
                         onClick = { vm.setType(pt) },
-                        label = { Text(periodLabelChip(s, pt)) },
-                        modifier = Modifier.weight(1f)
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.weight(1f),
+                        label = {
+                            Text(
+                                periodLabelChip(s, pt),
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Clip,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     )
                 }
             }

@@ -62,15 +62,16 @@ class FinanceViewModel @Inject constructor(
      * значение по умолчанию «скрыто» (false).
      */
     private val _balanceExpanded = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
-    /** Карта для подписки UI: recompose при каждом toggle. */
+    /** Карта для подписки UI: recompose при каждом toggle. Нет записи для
+     *  счёта (или false) — баланс скрыт (значение по умолчанию). */
     val balanceExpandedMap: StateFlow<Map<Int, Boolean>> = _balanceExpanded.asStateFlow()
-
-    /** Развёрнута ли карточ баланса для счёта [accId] (по умолчанию — скрыта). */
-    fun isBalanceExpanded(accId: Int): Boolean = _balanceExpanded.value[accId] == true
 
     /** Переключает видимость баланса для счёта [accId]. */
     fun toggleBalance(accId: Int) {
-        _balanceExpanded.update { it + (accId to it[accId] != true) }
+        _balanceExpanded.update { m ->
+            val expanded = m[accId] == true
+            m + (accId to !expanded)
+        }
     }
 
     init {
