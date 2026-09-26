@@ -61,14 +61,19 @@ class StatsViewModel @Inject constructor(
     private val curCode: String =
         Currency.fromCode(savedStateHandle.get<String>("currency") ?: Currency.RUB.code).code
 
+    /** Тип периода из маршрута stats/{currency}/{periodType}. */
+    private val initialType: PeriodType = runCatching {
+        PeriodType.valueOf(savedStateHandle.get<String>("periodType") ?: PeriodType.DAY.name)
+    }.getOrDefault(PeriodType.DAY)
+
     // loading=true на старте: первая композиция не должна рисовать графики
     // и заголовок до первого load()
     private val _state = MutableStateFlow(
-        StatsState(currency = Currency.fromCode(curCode), loading = true)
+        StatsState(currency = Currency.fromCode(curCode), type = initialType, loading = true)
     )
     val state: StateFlow<StatsState> = _state.asStateFlow()
 
-    init { load(PeriodType.DAY) }
+    init { load(initialType) }
 
     /**
      * Смена типа статистики (День/Неделя/…): сначала СИНХРОННО сбрасываем

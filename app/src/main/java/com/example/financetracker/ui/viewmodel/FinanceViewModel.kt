@@ -54,6 +54,25 @@ class FinanceViewModel @Inject constructor(
     private val _categories = MutableStateFlow<List<CategoryEntity>>(emptyList())
     val categories: StateFlow<List<CategoryEntity>> = _categories.asStateFlow()
 
+    /**
+     * Состояние сворачивания карточки баланса ПО СЧЁТАМ (accountId → expanded).
+     * Хранится в ViewModel: ViewModel живёт, пока жив NavHost, — состояние
+     * переживает переходы на Настройки/Статистику/Счета в рамках сессии,
+     * но при выходе из приложения (смерть процесса) сбрасывается в
+     * значение по умолчанию «скрыто» (false).
+     */
+    private val _balanceExpanded = MutableStateFlow<Map<Int, Boolean>>(emptyMap())
+    /** Карта для подписки UI: recompose при каждом toggle. */
+    val balanceExpandedMap: StateFlow<Map<Int, Boolean>> = _balanceExpanded.asStateFlow()
+
+    /** Развёрнута ли карточ баланса для счёта [accId] (по умолчанию — скрыта). */
+    fun isBalanceExpanded(accId: Int): Boolean = _balanceExpanded.value[accId] == true
+
+    /** Переключает видимость баланса для счёта [accId]. */
+    fun toggleBalance(accId: Int) {
+        _balanceExpanded.update { it + (accId to it[accId] != true) }
+    }
+
     init {
         reload()
     }

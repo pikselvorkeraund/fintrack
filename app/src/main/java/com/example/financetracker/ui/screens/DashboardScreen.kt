@@ -62,13 +62,19 @@ fun DashboardScreen(
     vm: FinanceViewModel = hiltViewModel(),
     onOpenSettings: () -> Unit,
     onOpenAccounts: () -> Unit,
-    onOpenStats: () -> Unit
+    onOpenStats: (PeriodType) -> Unit
 ) {
     val s = LocalStrings.current
     val ui by vm.ui.collectAsState()
     val cur by vm.currency.collectAsState()
     val acc by vm.account.collectAsState()
     val cats by vm.categories.collectAsState()
+
+    // Состояние свёрнутости баланса — по активному счёту (живёт в
+    // ViewModel в рамках сессии, после выхода из приложения — скрыто).
+    // Подписка на StateFlow: toggle перерисовывает экран
+    val balanceMap by vm.balanceExpandedMap.collectAsState()
+    val balanceExpanded = balanceMap[acc?.id ?: 0] == true
 
     // Имя категории по её id (для карточек списка и диалогов)
     val catById = remember(cats) { cats.associate { it.id to it.name } }
@@ -83,7 +89,6 @@ fun DashboardScreen(
     var toDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var viewed by remember { mutableStateOf<TransactionEntity?>(null) }
     var backOnce by remember { mutableStateOf(false) }
-    var balanceExpanded by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val activity = LocalContext.current as Activity
@@ -177,7 +182,7 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(s.balance, style = MaterialTheme.typography.bodyMedium)
-                        IconButton(onClick = { balanceExpanded = !balanceExpanded }) {
+                        IconButton(onClick = { vm.toggleBalance(acc?.id ?: 0) }) {
                             Icon(
                                 if (balanceExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
                                 contentDescription = null,
@@ -219,22 +224,33 @@ fun DashboardScreen(
                             Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable(role = Role.Button, onClickLabel = s.statsTitle) { onOpenStats() },
+                                .clickable(role = Role.Button, onClickLabel = s.statsTitle) { onOpenStats(st.type) },
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
                             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                // Первая строка — только название периода:
-                                // в узкой колонке иконка/стрелка в одном ряду
-                                // с подписью не помещаются и съезжают
-                                Text(
-                                    periodLabel(s, st.type),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1
-                                )
+                                // Строка 1: название периода слева, шеврон справа
+                                // (шеврон на первой строке — визуально «кнопка»)
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        periodLabel(s, st.type),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1
+                                    )
+                                    Icon(
+                                        Icons.Default.ChevronRight,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                                 Spacer(Modifier.height(2.dp))
-                                // Вторая строка — иконка, сумма и стрелка
+                                // Строка 2: иконка графика + сумма
                                 Row(
                                     Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically
@@ -252,15 +268,8 @@ fun DashboardScreen(
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f),
                                         color = if (st.net < 0) MaterialTheme.colorScheme.error
                                         else IncomeGreen
-                                    )
-                                    Icon(
-                                        Icons.Default.ChevronRight,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
@@ -393,7 +402,7 @@ fun DashboardScreen(
 /**
  * Диалог добавления записи: числовая клавиатура суммы, дата/время (календарь
  * + часы) кнопкой справа от выбора типа, категории из справочника БД
- * с пунктом «+ Добавить новую» и собственным диалогом ввода.
+ * с пунктом «Добавить новую» (иконка «+») и собственным диалогом ввода.
  */
 @Composable
 fun AddDlg(

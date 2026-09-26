@@ -38,13 +38,15 @@ fun AppNavGraph(settings: SettingsRepository) {
                     vm = financeVm,
                     onOpenSettings = { nav.navigate("settings") },
                     onOpenAccounts = { nav.navigate("accounts") },
-                    // Валюта передаётся аргументом: экран статистики строится
-                    // по той же активной валюте, что и дашборд
-                    onOpenStats = { nav.navigate("stats/${financeVm.currency.value.code}") }
+                    // Валюта и тип периода передаются аргументами: каждая
+                    // карточка ведёт на свой период (не всегда DAY)
+                    onOpenStats = { pt ->
+                        nav.navigate("stats/${financeVm.currency.value.code}/${pt.name}")
+                    }
                 )
             }
-            composable("stats/{currency}") {
-                // StatsViewModel получает аргумент currency через SavedStateHandle
+            composable("stats/{currency}/{periodType}") {
+                // StatsViewModel получает оба аргумента через SavedStateHandle
                 StatsScreen(onBack = { nav.popBackStack() })
             }
             composable("accounts") {
