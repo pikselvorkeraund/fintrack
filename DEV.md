@@ -556,6 +556,23 @@ expenseBars, incomeBars, totalExpense, totalIncome, loading, empty).
   пустой key → false для кнопок/пустой заголовок, стартовое состояние —
   `loading = true`, `shift()` с пустым ключом — no-op.
 
+- **Ключ периода обязан всегда соответствовать типу**: ключи разных типов
+  имеют разный формат (`yyyy-MM-dd`, `yyyy-Www`, …), и `PeriodType.shift()/
+  startDateOf()` упадут, если передать ключ не своего типа (напр. DAY-ключ
+  при WEEK → `split("-W")` бросает). Сценарии, где это могло произойти,
+  и их защита в [`StatsViewModel`](app/src/main/java/com/example/financetracker/ui/viewmodel/StatsViewModel.kt):
+  - `setType()` меняет `type`, но корутина `load()` обновляет ключ «потом» —
+    первая перерисовка с новым типом и старым ключом = краш. Решение:
+    `setType()` **синхронно** сбрасывает `key=""`, `minKey/maxKey=null`,
+    графики и `loading=true`;
+  - гонка `load()`: старая корутина заканчивает запрос после `setType()` и
+    накладывает ключ своего (уже неактуального) типа. Решение: проверка
+    `_state.value.type != pt → return@launch` перед записью границ и ключа;
+  - гонка `loadBars()`: результат запроса перестал актуален после
+    `setType()`/`shift()`. Решение: в начале — `key.isEmpty() →
+    return@launch`; в конце — сверка `type` и `key` с зафиксированными
+    на старте `st0` (`type != st0.type || key != st0.key → return@launch`).
+
 - **Цвет счёта из БД конвертировать только через `Color(Long.toInt())`**, а не
   `Color(long.toULong())`. `AccountEntity.color` хранит `0xAARRGGBB` как `Long`;
   первичный value-конструктор `Color(ULong)` трактует число как внутреннее

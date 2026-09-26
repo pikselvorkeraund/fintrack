@@ -70,9 +70,20 @@ class StatsViewModel @Inject constructor(
 
     init { load(PeriodType.DAY) }
 
-    /** Смена типа статистики (День/Неделя/…): пересчитывает границы и грузит период. */
+    /**
+     * Смена типа статистики (День/Неделя/…): сначала СИНХРОННО сбрасываем
+     * ключ/границы/графики, чтобы первая перерисовка с новым типом не
+     * вычисляла заголовок по старому ключу (periodTitle/shift упали бы на
+     * ключе другого формата, напр. DAY-ключ при WEEK). Затем грузим данные.
+     */
     fun setType(pt: PeriodType) {
-        if (_state.value.type == pt && _state.value.key.isNotEmpty()) return
+        if (_state.value.type == pt) return
+        _state.update {
+            it.copy(
+                type = pt, key = "", minKey = null, maxKey = null,
+                expenseBars = emptyList(), incomeBars = emptyList(), loading = true
+            )
+        }
         load(pt)
     }
 
@@ -90,6 +101,9 @@ class StatsViewModel @Inject constructor(
 
     private fun load(pt: PeriodType) {
         viewModelScope.launch {
+            // Гонка: пока эта корутина ждёт БД, пользователь мог выбрать другой тип.
+            // Проверяем на каждом шаге, что тип не изменился, иначе отбрасываем
+            // устаревший результат (он содержал бы ключ не своего формата).
             _state.update { s -> s.copy(type = pt, loading = true) }
             val acc = settings.currentAccountId()
             // Границы истории по агрегирующим строкам (MIN/MAX periodKey);
@@ -105,6 +119,10 @@ class StatsViewModel @Inject constructor(
                 nowKey > max -> max
                 else -> nowKey
             }
+            // Если тип сменился за время запроса — выходим: setType() уже
+            // запустил свой load(pt') для актуального ключа, а наш результат
+            // содержал бы ключ не своего формата.
+            if (_state.value.type != pt) return@launch
             _state.update { s -> s.copy(minKey = min, maxKey = max, key = start) }
             loadBars()
         }
@@ -113,14 +131,19 @@ class StatsViewModel @Inject constructor(
     /** Две разбивки (расход/доход) по категориям за выбранный период, топ-N. */
     private fun loadBars() {
         viewModelScope.launch {
-            val st = _state.value
+            val st0 = _state.value
+            // Пустой ключ = ещё не загружен: прежние графики не тронуты,
+            // новые придут с данными. Устаревший вызов (другой type/key)
+            // отбрасываем — иначе перезапишет актуальные графики.
+            if (st0.key.isEmpty()) return@launch
             val acc = settings.currentAccountId()
+            // Гонка: пока читаем БД, setType()/shift() могли сменить ключ заново
             _state.update { s -> s.copy(loading = true) }
-            val rows = try { repo.periodByCategory(acc, curCode, st.type, st.key) }
+            val rows = try { repo.periodByCategory(acc, curCode, st0.type, st0.key) }
                 catch (_: Throwable) { emptyList() }
             // Реальные итоги за период — из агрегирующей строки (не топ-N)
-            val totExp = try { repo.periodExpense(acc, curCode, st.type, st.key) } catch (_: Throwable) { 0.0 }
-            val totInc = try { repo.periodIncome(acc, curCode, st.type, st.key) } catch (_: Throwable) { 0.0 }
+            val totExp = try { repo.periodExpense(acc, curCode, st0.type, st0.key) } catch (_: Throwable) { 0.0 }
+            val totInc = try { repo.periodIncome(acc, curCode, st0.type, st0.key) } catch (_: Throwable) { 0.0 }
             // Имена и цвета категорий — из справочника одним чтением
             val cats = try { repo.listCategories() } catch (_: Throwable) { emptyList() }
             val byId = cats.associateBy { it.id }
@@ -138,6 +161,8 @@ class StatsViewModel @Inject constructor(
                     .take(TOP_N)
             val exp = bars { it.expense }
             val inc = bars { it.income }
+            // Если за время запроса изменились тип или ключ — результат устарел
+            if (_state.value.type != st0.type || _state.value.key != st0.key) return@launch
             _state.update { s ->
                 s.copy(
                     expenseBars = exp,
