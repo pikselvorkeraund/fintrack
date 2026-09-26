@@ -224,6 +224,8 @@ val LocalStrings = compositionLocalOf { StringsEn }
  * набора (RU/EN), поэтому не дублируются как отдельные UI-строки.
  */
 fun Strings.periodTitle(pt: PeriodType, key: String): String {
+    // Пустой ключ (данные ещё не загружены) — парсинг упал бы: отдаём пусто
+    if (key.isEmpty()) return ""
     val loc = Locale(langCode)
     return when (pt) {
         PeriodType.TOTAL -> ""

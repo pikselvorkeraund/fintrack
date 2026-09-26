@@ -389,8 +389,10 @@ account» / RU «Сменить счёт»). Все операции
 
 **Карточки компактной статистики — кнопки**: каждая (`День/Неделя/Месяц/Год`)
 окружена `Modifier.clickable(role = Role.Button, onClickLabel = s.statsTitle)`
-и ведёт на экран `stats` (`onOpenStats`). Явность кликабельности — вариант V1:
-мини-иконка `BarChart` слева от подписи периода и `ChevronRight` справа,
+и ведёт на экран `stats` (`onOpenStats`). Layout — вариант V1, двухстрочный
+(в узкой колонке `weight(1f)` всё в один ряд не помещается и «съезжает»):
+строка 1 — только подпись периода; строка 2 — иконка `BarChart`, затем
+`compact(net)` (`weight(1f)` + ellipsis) и `ChevronRight` справа.
 ripple/onClickLabel добавлены через clip+clickable поверх Card.
 
 ### 8.1 AddDlg (диалог добавления записи)
@@ -545,6 +547,14 @@ expenseBars, incomeBars, totalExpense, totalIncome, loading, empty).
 ---
 
 ## 12. Известные нюансы
+
+- **Экран статистики и пустой ключ периода**: `StatsState` при создании имеет
+  `key = ""` (до первой загрузки из БД). `periodTitle()`, `canGoBack`/
+  `canGoForward` и `shift()` обязаны корректно обрабатывать пустой ключ —
+  `PeriodType.shift("")`/парсинг ключа бросают исключение и роняют приложение
+  на первой же композиции (краш по клику на карточку дашборда). Поэтому:
+  пустой key → false для кнопок/пустой заголовок, стартовое состояние —
+  `loading = true`, `shift()` с пустым ключом — no-op.
 
 - **Цвет счёта из БД конвертировать только через `Color(Long.toInt())`**, а не
   `Color(long.toULong())`. `AccountEntity.color` хранит `0xAARRGGBB` как `Long`;

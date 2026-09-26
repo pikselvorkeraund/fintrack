@@ -38,9 +38,13 @@ data class StatsState(
     val loading: Boolean = false,
     val empty: Boolean = false
 ) {
-    /** Есть ли за пределами текущего ключа более ранние/более поздние периоды. */
-    val canGoBack: Boolean get() = minKey != null && type.shift(key, -1) >= minKey
-    val canGoForward: Boolean get() = maxKey != null && type.shift(key, 1) <= maxKey
+    /** Есть ли за пределами текущего ключа более ранние/более поздние периоды.
+     *  Пустой key (первая композиция до загрузки) — false: shift("") упал бы
+     *  на LocalDate.parse. */
+    val canGoBack: Boolean get() =
+        key.isNotEmpty() && minKey != null && type.shift(key, -1) >= minKey
+    val canGoForward: Boolean get() =
+        key.isNotEmpty() && maxKey != null && type.shift(key, 1) <= maxKey
 }
 
 @HiltViewModel
@@ -57,7 +61,11 @@ class StatsViewModel @Inject constructor(
     private val curCode: String =
         Currency.fromCode(savedStateHandle.get<String>("currency") ?: Currency.RUB.code).code
 
-    private val _state = MutableStateFlow(StatsState(currency = Currency.fromCode(curCode)))
+    // loading=true на старте: первая композиция не должна рисовать графики
+    // и заголовок до первого load()
+    private val _state = MutableStateFlow(
+        StatsState(currency = Currency.fromCode(curCode), loading = true)
+    )
     val state: StateFlow<StatsState> = _state.asStateFlow()
 
     init { load(PeriodType.DAY) }
@@ -71,9 +79,11 @@ class StatsViewModel @Inject constructor(
     /** Листание на delta периодов назад/вперёд, в границах истории (minKey..maxKey). */
     fun shift(delta: Long) {
         val st = _state.value
-        val next = st.type.shift(st.key, delta)
+        // Пустой ключ = данные ещё не загружены: сдвигать нечего
+        if (st.key.isEmpty()) return
         if (!st.canGoBack && delta < 0) return
         if (!st.canGoForward && delta > 0) return
+        val next = st.type.shift(st.key, delta)
         _state.update { it.copy(key = next) }
         loadBars()
     }

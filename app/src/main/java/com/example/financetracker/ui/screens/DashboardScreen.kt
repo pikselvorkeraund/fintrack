@@ -225,7 +225,20 @@ fun DashboardScreen(
                             )
                         ) {
                             Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Первая строка — только название периода:
+                                // в узкой колонке иконка/стрелка в одном ряду
+                                // с подписью не помещаются и съезжают
+                                Text(
+                                    periodLabel(s, st.type),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1
+                                )
+                                Spacer(Modifier.height(2.dp))
+                                // Вторая строка — иконка, сумма и стрелка
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
                                         Icons.Default.BarChart,
                                         contentDescription = null,
@@ -234,9 +247,14 @@ fun DashboardScreen(
                                     )
                                     Spacer(Modifier.width(4.dp))
                                     Text(
-                                        periodLabel(s, st.type),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        modifier = Modifier.weight(1f)
+                                        compact(st.net),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                        color = if (st.net < 0) MaterialTheme.colorScheme.error
+                                        else IncomeGreen
                                     )
                                     Icon(
                                         Icons.Default.ChevronRight,
@@ -245,13 +263,6 @@ fun DashboardScreen(
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Text(
-                                    compact(st.net),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (st.net < 0) MaterialTheme.colorScheme.error
-                                    else IncomeGreen
-                                )
                             }
                         }
                     }
