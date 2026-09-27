@@ -18,6 +18,16 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
     suspend fun page(acc: Int, cur: String, lastId: Long, limit: Int): List<TransactionEntity> =
         db.dao().getPage(acc, cur, lastId, limit)
 
+    /**
+     * Страница записей за выбранный период (вкладка «Операции» экрана
+     * «Периоды»): keyset по паре (timestamp, id) в диапазоне [from; to).
+     */
+    suspend fun periodPage(
+        acc: Int, cur: String, from: Long, to: Long,
+        lastTs: Long, lastId: Long, limit: Int
+    ): List<TransactionEntity> =
+        db.dao().getPeriodPage(acc, cur, from, to, lastTs, lastId, limit)
+
     suspend fun countFor(acc: Int, cur: String): Int = db.dao().countFor(acc, cur)
 
     /**

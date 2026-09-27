@@ -35,7 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
         const val DB_NAME = "finance.db"
 
         /** Текущая версия схемы (используется в @Database и записывается в бэкапы). */
-        const val VERSION = 4
+        const val VERSION = 5
 
         /**
          * v1 -> v2: создаёт таблицу статистики и заполняет её суммами
@@ -325,6 +325,23 @@ abstract class AppDatabase : RoomDatabase() {
                         arrayOf(k.acc, k.pt, k.pk, k.cur, k.cat, v[0], v[1])
                     )
                 }
+            }
+        }
+
+        /**
+         * v4 -> v5: индекс для экрана «Периоды» (вкладка «Операции»).
+         * Keyset-страница транзакций за выбранный период фильтрует по
+         * timestamp и продолжает по паре (timestamp, id) — без этого
+         * индекса SQLite сканировал бы всю историю счёта+валюты.
+         * Данные не меняются: только CREATE INDEX (DDL при закрытых
+         * курсорах — безопасно).
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_accountId_currencyCode_timestamp_id` " +
+                        "ON `transactions` (`accountId`, `currencyCode`, `timestamp`, `id`)"
+                )
             }
         }
     }

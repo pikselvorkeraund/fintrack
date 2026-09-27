@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.Currency
 import com.example.financetracker.data.model.PeriodType
+import com.example.financetracker.data.model.TransactionEntity
 import com.example.financetracker.data.repository.TransactionRepository
 import com.example.financetracker.data.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 import javax.inject.Inject
 
 /** Один столбик бар-чарта: категория, подписью и цвет из справочника. */
@@ -23,6 +25,9 @@ data class BarItem(
     val value: Double,
     val color: Long
 )
+
+/** Вкладки экрана «Периоды»: графики по категориям / список операций. */
+enum class StatsTab { STATS, OPS }
 
 /** Состояние экрана статистики: тип периода, текущий ключ, границы истории, два графика. */
 data class StatsState(
@@ -36,7 +41,25 @@ data class StatsState(
     val totalExpense: Double = 0.0,
     val totalIncome: Double = 0.0,
     val loading: Boolean = false,
-    val empty: Boolean = false
+    val empty: Boolean = false,
+    /** Активная вкладка (Статистика/Операции) — живёт до закрытия экрана. */
+    val tab: StatsTab = StatsTab.STATS,
+    /** id → имя категории (для карточек вкладки «Операции»). */
+    val catNames: Map<Int, String> = emptyMap(),
+    /** Загруженное окно операций выбранного периода (timestamp DESC, id DESC). */
+    val ops: List<TransactionEntity> = emptyList(),
+    /** Список загружен для текущего type+key (не перечитывать при возврате на вкладку). */
+    val opsLoaded: Boolean = false,
+    val opsLoading: Boolean = false,
+    val opsLoadingMore: Boolean = false,
+    val opsHasMore: Boolean = false,
+    /**
+     * Курсор keyset-пагинации — ПОСЛЕДНЯЯ ЗАГРУЖЕННАЯ пара (timestamp, id),
+     * а не последний элемент окна: при удалении записи из середины окна
+     * дозагрузка от курсора не должна возвращать уже показанные записи.
+     */
+    val opsCursorTs: Long = 0,
+    val opsCursorId: Long = 0
 ) {
     /** Есть ли за пределами текущего ключа более ранние/более поздние периоды.
      *  Пустой key (первая композиция до загрузки) — false: shift("") упал бы
@@ -55,7 +78,11 @@ class StatsViewModel @Inject constructor(
 ) : ViewModel() {
 
     /** Максимум столбиков на график — категории с наибольшими значениями. */
-    private companion object { const val TOP_N = 7 }
+    /** Размер страницы операций — как на дашборде (AGENTS.md: по 20 записей). */
+    private companion object {
+        const val TOP_N = 7
+        const val PAGE_SIZE = 20
+    }
 
     /** Активная валюта дашборда — передаётся навигационным аргументом. */
     private val curCode: String =
@@ -86,10 +113,25 @@ class StatsViewModel @Inject constructor(
         _state.update {
             it.copy(
                 type = pt, key = "", minKey = null, maxKey = null,
-                expenseBars = emptyList(), incomeBars = emptyList(), loading = true
+                expenseBars = emptyList(), incomeBars = emptyList(), loading = true,
+                ops = emptyList(), opsLoaded = false, opsLoading = false,
+                opsLoadingMore = false, opsHasMore = false,
+                opsCursorTs = 0, opsCursorId = 0
             )
         }
         load(pt)
+    }
+
+    /**
+     * Переключение вкладки. Состояние вкладки живёт в ViewModel и
+     * переживает смену типа периода и листание периодов; при выходе
+     * на дашборд ViewModel уничтожается — при следующем входе снова
+     * вкладка «Статистика».
+     */
+    fun setTab(t: StatsTab) {
+        if (_state.value.tab == t) return
+        _state.update { it.copy(tab = t) }
+        if (t == StatsTab.OPS) ensureOpsLoaded()
     }
 
     /** Листание на delta периодов назад/вперёд, в границах истории (minKey..maxKey). */
@@ -100,8 +142,15 @@ class StatsViewModel @Inject constructor(
         if (!st.canGoBack && delta < 0) return
         if (!st.canGoForward && delta > 0) return
         val next = st.type.shift(st.key, delta)
-        _state.update { it.copy(key = next) }
+        // Новый период — окно операций неактуально, сбрасываем до загрузки
+        _state.update {
+            it.copy(
+                key = next, ops = emptyList(), opsLoaded = false, opsLoading = false,
+                opsLoadingMore = false, opsHasMore = false, opsCursorTs = 0, opsCursorId = 0
+            )
+        }
         loadBars()
+        if (_state.value.tab == StatsTab.OPS) loadOps(reset = true)
     }
 
     private fun load(pt: PeriodType) {
@@ -130,6 +179,9 @@ class StatsViewModel @Inject constructor(
             if (_state.value.type != pt) return@launch
             _state.update { s -> s.copy(minKey = min, maxKey = max, key = start) }
             loadBars()
+            // Если пользователь уже на вкладке операций — грузим и список
+            // (иначе список подтянется лениво при setTab(OPS))
+            if (_state.value.tab == StatsTab.OPS) loadOps(reset = true)
         }
     }
 
@@ -175,9 +227,100 @@ class StatsViewModel @Inject constructor(
                     totalExpense = totExp,
                     totalIncome = totInc,
                     loading = false,
-                    empty = exp.isEmpty() && inc.isEmpty()
+                    empty = exp.isEmpty() && inc.isEmpty(),
+                    catNames = cats.associate { it.id to it.name }
                 )
             }
         }
+    }
+
+    // ---------- Вкладка «Операции» ----------
+
+    /** Ленивая загрузка следующей страницы операций (20 записей от курсора). */
+    fun loadOpsMore() {
+        val st = _state.value
+        if (st.key.isEmpty() || !st.opsHasMore || st.opsLoading || st.opsLoadingMore) return
+        loadOps(reset = false)
+    }
+
+    /**
+     * Удаление записи с вкладки «Операции»: repo.remove атомарно удаляет
+     * транзакцию и вычитает дельту из stats; из окна изымаем запись и
+     * дозагружаем до полного окна от курсора (курсор при удалении не
+     * сдвигается — иначе дозагрузка вернула бы уже показанные записи);
+     * графики и итоги перечитываем из stats — они изменились.
+     */
+    fun remove(t: TransactionEntity) {
+        viewModelScope.launch {
+            try { repo.remove(t) } catch (_: Throwable) { return@launch }
+            _state.update { s -> s.copy(ops = s.ops.filterNot { it.id == t.id }) }
+            if (_state.value.ops.size < PAGE_SIZE && _state.value.opsHasMore) {
+                loadOps(reset = false)
+            }
+            loadBars()
+        }
+    }
+
+    /** Загружает список при первом переходе на вкладку (или после смены периода). */
+    private fun ensureOpsLoaded() {
+        val st = _state.value
+        if (st.key.isEmpty() || st.opsLoaded || st.opsLoading) return
+        loadOps(reset = true)
+    }
+
+    /** Страница операций выбранного периода: keyset по паре (timestamp, id). */
+    private fun loadOps(reset: Boolean) {
+        viewModelScope.launch {
+            val st0 = _state.value
+            if (st0.key.isEmpty()) return@launch
+            if (reset) {
+                _state.update {
+                    it.copy(
+                        opsLoading = true, ops = emptyList(), opsHasMore = false,
+                        opsLoaded = false, opsCursorTs = 0, opsCursorId = 0
+                    )
+                }
+            } else {
+                _state.update { it.copy(opsLoadingMore = true) }
+            }
+            val acc = settings.currentAccountId()
+            val range = runCatching { periodRange(st0.type, st0.key) }.getOrNull()
+            if (range == null) {
+                _state.update { it.copy(opsLoading = false, opsLoadingMore = false, opsLoaded = true) }
+                return@launch
+            }
+            val lastTs = if (reset) 0 else st0.opsCursorTs
+            val lastId = if (reset) 0 else st0.opsCursorId
+            val page = try {
+                repo.periodPage(acc, curCode, range.first, range.second, lastTs, lastId, PAGE_SIZE)
+            } catch (_: Throwable) { emptyList() }
+            // Гонка: за время запроса сменились тип/ключ/вкладка — результат устарел
+            if (_state.value.type != st0.type || _state.value.key != st0.key) return@launch
+            _state.update { s ->
+                // distinctBy: защита от редкой гонки «удаление + loadMore» —
+                // два параллельных non-reset запроса с одним курсором вернули
+                // бы одну и ту же страницу; дубликат id уронил бы LazyColumn
+                // («Key was already used»)
+                val merged = (if (reset) page else s.ops + page).distinctBy { it.id }
+                val last = page.lastOrNull()
+                s.copy(
+                    ops = merged,
+                    opsHasMore = page.size == PAGE_SIZE,
+                    opsLoading = false,
+                    opsLoadingMore = false,
+                    opsLoaded = true,
+                    opsCursorTs = last?.timestamp ?: s.opsCursorTs,
+                    opsCursorId = last?.id ?: s.opsCursorId
+                )
+            }
+        }
+    }
+
+    /** Границы периода [начало; начало следующего) в миллисекундах системной зоны. */
+    private fun periodRange(pt: PeriodType, key: String): Pair<Long, Long> {
+        val zone = ZoneId.systemDefault()
+        val start = pt.startDateOf(key).atStartOfDay(zone).toInstant().toEpochMilli()
+        val end = pt.startDateOf(pt.shift(key, 1)).atStartOfDay(zone).toInstant().toEpochMilli()
+        return start to end
     }
 }

@@ -12,6 +12,16 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE accountId = :acc AND currencyCode = :cur AND (:lastId = 0 OR id < :lastId) ORDER BY id DESC LIMIT :limit")
     suspend fun getPage(acc: Int, cur: String, lastId: Long, limit: Int): List<TransactionEntity>
 
+    /**
+     * Keyset-страница транзакций за период [from; to) активного счёта и
+     * валюты, строго «старее» последней загруженной пары (lastTs, lastId)
+     * (lastTs = 0 — первая страница). Порядок timestamp DESC, id DESC и
+     * продолжение пагинации по паре обслуживаются индексом
+     * (accountId, currencyCode, timestamp, id) — таблица не сканируется.
+     */
+    @Query("SELECT * FROM transactions WHERE accountId = :acc AND currencyCode = :cur AND timestamp >= :from AND timestamp < :to AND (:lastTs = 0 OR timestamp < :lastTs OR (timestamp = :lastTs AND id < :lastId)) ORDER BY timestamp DESC, id DESC LIMIT :limit")
+    suspend fun getPeriodPage(acc: Int, cur: String, from: Long, to: Long, lastTs: Long, lastId: Long, limit: Int): List<TransactionEntity>
+
     @Query("SELECT COUNT(*) FROM transactions WHERE accountId = :acc AND currencyCode = :cur")
     suspend fun countFor(acc: Int, cur: String): Int
 
