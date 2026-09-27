@@ -22,7 +22,7 @@ private data class CatKey(val acc: Int, val pt: String, val pk: String, val cur:
         AccountEntity::class,
         CategoryEntity::class
     ],
-    version = 4,
+    version = AppDatabase.VERSION,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +33,9 @@ abstract class AppDatabase : RoomDatabase() {
 
     companion object {
         const val DB_NAME = "finance.db"
+
+        /** Текущая версия схемы (используется в @Database и записывается в бэкапы). */
+        const val VERSION = 4
 
         /**
          * v1 -> v2: создаёт таблицу статистики и заполняет её суммами

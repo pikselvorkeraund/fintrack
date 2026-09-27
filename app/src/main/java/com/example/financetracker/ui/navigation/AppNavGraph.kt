@@ -56,7 +56,12 @@ fun AppNavGraph(settings: SettingsRepository) {
                 )
             }
             composable("settings") {
-                SettingsScreen(onBack = { nav.popBackStack() })
+                SettingsScreen(
+                    // После импорта дашборд перечитывается (Replace/Merge меняют
+                    // весь набор данных, инкрементальные состояния невалидны)
+                    onDataChanged = { financeVm.reload() },
+                    onBack = { nav.popBackStack() }
+                )
             }
         }
     }

@@ -74,9 +74,9 @@ data/
   local/
     AppDatabase.kt        — @Database v4, DAO-и, MIGRATION_1_2 + MIGRATION_2_3 + MIGRATION_3_4
     DbHolder.kt           — ленивое открытие зашифрованной БД (см. §5)
-    TransactionDao.kt     — CRUD + keyset-пагинация (по счёту + валюте)
+    TransactionDao.kt     — CRUD + keyset-пагинация (по счёту + валюте) + all() для дампа
     StatDao.kt            — инкрементальные суммы (счёт + период + валюта + категория)
-    AccountDao.kt         — CRUD справочника счетов
+    AccountDao.kt         — CRUD справочника счетов (+ deleteAll для импорта-замены)
     CategoryDao.kt        — CRUD справочника категорий (listAll/byName/insert)
   model/
     Currency.kt           — enum валют (code/symbol/displayName)
@@ -86,6 +86,7 @@ data/
     StatEntity.kt         — PeriodType (с ключами и shift) + таблица `stats` (см. §7)
   repository/
     TransactionRepository.kt — бизнес-логика + транзакции + CRUD счетов (см. §6)
+    BackupRepository.kt      — экспорт/импорт всей БД в шифрованный контейнер (см. §12)
   security/
     PatternLockManager.kt — узор, соль, PBKDF2, счётчик попыток, вайп
   settings/
@@ -102,14 +103,14 @@ ui/
     LockScreen.kt             — экран узора
     DashboardScreen.kt        — главный экран + AddDlg (см. §8)
     AccountsScreen.kt         — CRUD-справочник счетов
-    SettingsScreen.kt         — выбор языка
+    SettingsScreen.kt         — выбор языка + экспорт/импорт (см. §12)
     StatsScreen.kt            — статистика за период: бар-чарты по категориям (см. §8)
   theme/Theme.kt              — Material3 dark/light палитра
   viewmodel/
     LockViewModel.kt          — старт-ап/вход/вайп
     FinanceViewModel.kt       — состояние дашборда + справочник категорий (см. §8)
     AccountsViewModel.kt      — CRUD счетов, переключение текущего
-    SettingsViewModel.kt      — обёртка языка
+    SettingsViewModel.kt      — обёртка языка + запуск бэкапа (busy/message)
     StatsViewModel.kt         — состояние экрана статистики (см. §8)
 ```
 
@@ -214,7 +215,8 @@ PK = составной `(accountId, periodType, periodKey, currencyCode, catego
 
 ### Миграции
 [`AppDatabase`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt)
-имеет `version = 4`:
+имеет `version = AppDatabase.VERSION` (константа = 4, она же пишется
+в заголовок резервных копий):
 - `MIGRATION_1_2` — создаёт `stats` (без `accountId`) и заполняет её
   агрегацией из `transactions` по всем периодам.
 - `MIGRATION_2_3` — вводит многоучётность:
@@ -569,7 +571,61 @@ expenseBars, incomeBars, totalExpense, totalIncome, loading, empty).
 
 ---
 
-## 12. Известные нюансы
+## 12. Экспорт/импорт резервных копий
+
+Реализован в [`BackupRepository`](app/src/main/java/com/example/financetracker/data/repository/BackupRepository.kt),
+UI-вход — раздел «Данные» в [`SettingsScreen`](app/src/main/java/com/example/financetracker/ui/screens/SettingsScreen.kt:32),
+логика запуска/состояний — в [`SettingsViewModel`](app/src/main/java/com/example/financetracker/ui/viewmodel/SettingsViewModel.kt:25).
+После успешного импорта дашборд принудительно перечитывается
+(`onDataChanged` → `financeVm.reload()` в `AppNavGraph`): инкрементальные
+состояния ViewModel невалидны после изменения всего набора данных.
+
+### Формат контейнера
+`FINTX1` (magic, 6 Б) + salt (16 Б) + IV (12 Б) + AES-256-GCM(gzip(JSON)).
+JSON: `format`, `dbVersion` (схема на момент дампа), `createdAt`, массивы
+`accounts`, `categories`, `transactions` (поля — 1:1 с сущностями, id сохраняются).
+`stats` в файл **не пишется** — пересобирается при импорте (см. ниже), что
+гарантирует консистентность сумм по [`AGENTS.md`](AGENTS.md).
+
+### Криптография
+- Ключ = `PBKDF2WithHmacSHA256(пароль юзера, salt, 310 000 итераций, 256 бит)` —
+  **независим от графического узора**: файл восстанавливается на любом устройстве.
+- Шифрование — `AES/GCM/NoPadding` (128-битный тег): подделка/повреждение
+  обнаруживаются; неверный пароль → `AEADBadTagException` →
+  `BackupWrongPasswordException` (тег служит проверкой пароля).
+- Salt и IV — `SecureRandom` на каждый экспорт; байты ключа обнуляются
+  после использования (`key.fill(0)`).
+- Файл передаётся через SAF (`CreateDocument`/`OpenDocument`, mime
+  `application/octet-stream`, расширение `.fintx`) — разрешений не требуется,
+  офлайн-политика соблюдается.
+
+### Импорт — два режима ([`ImportMode`](app/src/main/java/com/example/financetracker/data/repository/BackupRepository.kt:34))
+Оба выполняются в одной `db().withTransaction { }`:
+- **REPLACE** — очистка всех четырёх таблиц, вставка с исходными id
+  (keyset-пагинация и история целы), пересборка `stats` дельтами
+  `addStats` по каждой транзакции, затем `fixCurrentAccount()` (сохранённый
+  `currentAccountId` мог указать на несуществующий счёт).
+- **MERGE** — счета матчатся по имени (NOCASE), категории — по
+  (имя, тип), транзакции дедуплицируются по сигнатуре содержимого
+  (`accountId|currency|amount|category|isIncome|timestamp|note` уже после
+  маппинга id); новые получают локальные id, вклад в `stats` добавляется дельтой.
+
+Пароль на импорте — один ввод + выбор режима в `AlertDialog` (деструктивная
+замена — только через подтверждение, по правилам UI). В обоих режимах после
+импорта вызывается `repo.ensureDefaultCategories()` (дамп мог не содержать категорий).
+
+### UI
+Диалог пароля экспорта — ввод дважды (мин. 8 символов, совпадение). На время
+операции (`busy`) экран перекрывается затемнением с `CircularProgressIndicator`
+(тяжёлые шаги — PBKDF2/gzip/IO — идут на `Dispatchers.IO`). Результат —
+Snackbar с числом записей; типы ошибок различаются: неверный пароль,
+не-копия/битый файл (`BackupFormatException`), копия из будущей версии
+(`BackupNewerVersionException`). Сбои не роняют процесс. Все строки —
+в `StringsEn`/`StringsRu` (`dataSection`, `exportTitle`, `importMode*`, …).
+
+---
+
+## 13. Известные нюансы
 
 - **Экран статистики и пустой ключ периода**: `StatsState` при создании имеет
   `key = ""` (до первой загрузки из БД). `periodTitle()`, `canGoBack`/
@@ -621,7 +677,7 @@ expenseBars, incomeBars, totalExpense, totalIncome, loading, empty).
 
 ---
 
-## 13. Актуальность документации
+## 14. Актуальность документации
 
 **Этот файл необходимо держать в актуальном состоянии при заметных изменениях
 проекта.** Любая существенная правка — новая сущность/миграция, изменение

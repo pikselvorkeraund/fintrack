@@ -32,4 +32,8 @@ interface TransactionDao {
 
     @Query("DELETE FROM transactions")
     suspend fun deleteAll()
+
+    /** Полный дамп для экспорта/импорта. Не использовать в UI-горячем пути. */
+    @Query("SELECT * FROM transactions ORDER BY id ASC")
+    suspend fun all(): List<TransactionEntity>
 }
