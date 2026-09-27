@@ -36,4 +36,8 @@ interface TransactionDao {
     /** Полный дамп для экспорта/импорта. Не использовать в UI-горячем пути. */
     @Query("SELECT * FROM transactions ORDER BY id ASC")
     suspend fun all(): List<TransactionEntity>
+
+    /** Вся история счёта в хронологическом порядке (для CSV-экспорта). */
+    @Query("SELECT * FROM transactions WHERE accountId = :acc ORDER BY timestamp ASC, id ASC")
+    suspend fun forAccount(acc: Int): List<TransactionEntity>
 }

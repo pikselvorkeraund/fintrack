@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
@@ -38,11 +39,16 @@ fun SettingsScreen(
     val lang by vm.lang.collectAsState()
     val busy by vm.busy.collectAsState()
     val msg by vm.message.collectAsState()
+    val accounts by vm.accounts.collectAsState()
     val snackbar = remember { SnackbarHostState() }
 
     // ---- диалоговое состояние ----
-    // 0 = нет диалога; 1 = экспорт (пароль+подтверждение); 2 = импорт (пароль)
+    // 0 = нет; 1 = экспорт (пароль+подтверждение); 2 = импорт (пароль);
+    // 3 = режим импорта; 4 = выбор счёта для CSV
     var dialog by remember { mutableIntStateOf(0) }
+    // Выбранный в диалоге счёт для CSV-экспорта (по умолчанию — текущий)
+    var csvAccId by remember { mutableStateOf<Int?>(null) }
+    val csvPendingAcc = remember { mutableStateOf<Int?>(null) }
     val pwd = remember { mutableStateOf("") }
     val pwd2 = remember { mutableStateOf("") }
     var pwdErr by remember { mutableStateOf<String?>(null) }
@@ -59,6 +65,13 @@ fun SettingsScreen(
             pwd.value = ""; pwd2.value = ""; pwdErr = null
             dialog = 1
         }
+    }
+    val csvLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        val acc = csvPendingAcc.value
+        csvPendingAcc.value = null
+        if (uri != null && acc != null) vm.exportCsv(uri, acc, s)
     }
     val importLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -137,6 +150,35 @@ fun SettingsScreen(
                             Text(s.exportTitle, style = MaterialTheme.typography.bodyLarge)
                             Text(
                                 s.exportDesc,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                // Карточка «Экспорт CSV» (без пароля: только чтение истории счёта)
+                OutlinedCard(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            vm.refreshAccounts()
+                            csvAccId = vm.currentAccountId()
+                            dialog = 4
+                        },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Description, null, tint = MaterialTheme.colorScheme.primary)
+                        Column(Modifier.padding(start = 12.dp)) {
+                            Text(s.csvTitle, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                s.csvDesc,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -317,6 +359,50 @@ fun SettingsScreen(
                         }
                     }) { Text(s.importModeReplaceBtn, color = MaterialTheme.colorScheme.error) }
                 }
+            }
+        )
+    }
+
+    // ---- выбор счёта для CSV-экспорта ----
+    if (dialog == 4) {
+        AlertDialog(
+            onDismissRequest = { dialog = 0; csvPendingAcc.value = null },
+            title = { Text(s.csvPickAccount) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    if (accounts.isEmpty()) {
+                        // Счета ещё не подгружены или БД недоступна — безопасно
+                        Text(s.csvNoAccounts,
+                            style = MaterialTheme.typography.bodyMedium)
+                    }
+                    accounts.forEach { a ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { csvAccId = a.id }
+                        ) {
+                            RadioButton(
+                                selected = csvAccId == a.id,
+                                onClick = { csvAccId = a.id }
+                            )
+                            Text(a.name, Modifier.padding(start = 8.dp), maxLines = 1)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    val acc = csvAccId
+                    if (acc != null) {
+                        csvPendingAcc.value = acc
+                        dialog = 0
+                        csvLauncher.launch(vm.suggestCsvName(acc))
+                    }
+                }) { Text(s.ok) }
+            },
+            dismissButton = {
+                TextButton(onClick = { dialog = 0; csvPendingAcc.value = null }) { Text(s.cancel) }
             }
         )
     }

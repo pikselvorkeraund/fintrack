@@ -74,7 +74,7 @@ data/
   local/
     AppDatabase.kt        — @Database v4, DAO-и, MIGRATION_1_2 + MIGRATION_2_3 + MIGRATION_3_4
     DbHolder.kt           — ленивое открытие зашифрованной БД (см. §5)
-    TransactionDao.kt     — CRUD + keyset-пагинация (по счёту + валюте) + all() для дампа
+    TransactionDao.kt     — CRUD + keyset-пагинация (по счёту + валюте) + all()/forAccount() для экспорта
     StatDao.kt            — инкрементальные суммы (счёт + период + валюта + категория)
     AccountDao.kt         — CRUD справочника счетов (+ deleteAll для импорта-замены)
     CategoryDao.kt        — CRUD справочника категорий (listAll/byName/insert)
@@ -87,6 +87,7 @@ data/
   repository/
     TransactionRepository.kt — бизнес-логика + транзакции + CRUD счетов (см. §6)
     BackupRepository.kt      — экспорт/импорт всей БД в шифрованный контейнер (см. §12)
+    CsvExportRepository.kt   — экспорт истории счёта в Excel-CSV (см. §13)
   security/
     PatternLockManager.kt — узор, соль, PBKDF2, счётчик попыток, вайп
   settings/
@@ -103,14 +104,14 @@ ui/
     LockScreen.kt             — экран узора
     DashboardScreen.kt        — главный экран + AddDlg (см. §8)
     AccountsScreen.kt         — CRUD-справочник счетов
-    SettingsScreen.kt         — выбор языка + экспорт/импорт (см. §12)
+    SettingsScreen.kt         — выбор языка + экспорт/импорт + CSV (см. §12–13)
     StatsScreen.kt            — статистика за период: бар-чарты по категориям (см. §8)
   theme/Theme.kt              — Material3 dark/light палитра
   viewmodel/
     LockViewModel.kt          — старт-ап/вход/вайп
     FinanceViewModel.kt       — состояние дашборда + справочник категорий (см. §8)
     AccountsViewModel.kt      — CRUD счетов, переключение текущего
-    SettingsViewModel.kt      — обёртка языка + запуск бэкапа (busy/message)
+    SettingsViewModel.kt      — обёртка языка + запуск бэкапа/CSV (busy/message)
     StatsViewModel.kt         — состояние экрана статистики (см. §8)
 ```
 
@@ -625,7 +626,42 @@ Snackbar с числом записей; типы ошибок различаю�
 
 ---
 
-## 13. Известные нюансы
+## 13. Экспорт истории счёта в CSV
+
+Реализован в [`CsvExportRepository`](app/src/main/java/com/example/financetracker/data/repository/CsvExportRepository.kt:55)
+— «только чтение»: в файл попадает вся история выбранного счёта (все валюты).
+Пароль/шифрование не применяются — CSV для Excel/1С, не для восстановления.
+
+- **Формат (Excel-совместимый)**: разделитель `;`, десятичная **запятая**,
+  UTF-8 с **BOM**, CRLF. Экранирование по RFC: ячейка в кавычки при `;`/`"`/
+  переводе строки (переводы строк в комментарии заменяются пробелом). Файл
+  открывается двойным кликом в Excel/LibreOffice/1С на русской локали без
+  мастера импорта.
+- **Колонки** (8, заголовки локализованы через `CsvLabels`, собираемый из
+  `Strings` в ViewModel): Дата `yyyy-MM-dd`, Время `HH:mm`, Тип
+  (`incomeChip`/`expenseChip`), Категория — [`Strings.cat()`](app/src/main/java/com/example/financetracker/ui/locale/AppLocale.kt:315)
+  по имени из справочника (`categoryId → name`), Приход, Расход (одна из
+  двух ячеек пустая), Валюта, Комментарий.
+- **Итоги**: после группы каждой валюты — строка «Итого» с суммами приходов
+  и расходов. Смешивать валюты в один итог нельзя — расчёт строго в
+  пределах кода валюты, строки группируются по `currencyCode`.
+- **Имя файла**: `<счёт>-yyyy-MM-dd_HH-mm.csv` ([`suggestFileName()`](app/src/main/java/com/example/financetracker/data/repository/CsvExportRepository.kt:70));
+  запрещённые в ФС символы (`\/:*?"<>|`), пробелы и control-символы → `_`.
+- **Поток UI**: карточка «Экспорт в CSV» в разделе «Данные» [`SettingsScreen`](app/src/main/java/com/example/financetracker/ui/screens/SettingsScreen.kt:34)
+  → `AlertDialog` выбора счёта (по умолчанию текущий, `vm.refreshAccounts()`)
+  → SAF `CreateDocument("text/csv")` → спиннер `busy` + Snackbar с числом
+  строк (`csvDone`/`csvErr`). При недоступности БД пустой список — безопасно
+  `csvNoAccounts`.
+- Чтение: [`TransactionDao.forAccount(acc)`](app/src/main/java/com/example/financetracker/data/local/TransactionDao.kt:41)
+  — история счёта в хронологическом порядке (`ORDER BY timestamp, id`);
+  БД не меняется, `withTransaction` не требуется.
+- Строки `csvTitle/csvDesc/csvPickAccount/csvNoAccounts/csvDate/csvTime/
+  csvType/csvIncome/csvExpense/csvCurrency/csvTotal/csvDone/csvErr` — в оба
+  языка (`StringsEn`/`StringsRu`).
+
+---
+
+## 14. Известные нюансы
 
 - **Экран статистики и пустой ключ периода**: `StatsState` при создании имеет
   `key = ""` (до первой загрузки из БД). `periodTitle()`, `canGoBack`/
@@ -677,7 +713,7 @@ Snackbar с числом записей; типы ошибок различаю�
 
 ---
 
-## 14. Актуальность документации
+## 15. Актуальность документации
 
 **Этот файл необходимо держать в актуальном состоянии при заметных изменениях
 проекта.** Любая существенная правка — новая сущность/миграция, изменение

@@ -3,11 +3,15 @@ package com.example.financetracker.ui.viewmodel
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.financetracker.data.model.AccountEntity
 import com.example.financetracker.data.repository.BackupFormatException
 import com.example.financetracker.data.repository.BackupNewerVersionException
 import com.example.financetracker.data.repository.BackupRepository
 import com.example.financetracker.data.repository.BackupWrongPasswordException
+import com.example.financetracker.data.repository.CsvExportRepository
+import com.example.financetracker.data.repository.CsvLabels
 import com.example.financetracker.data.repository.ImportMode
+import com.example.financetracker.data.repository.TransactionRepository
 import com.example.financetracker.data.settings.SettingsRepository
 import com.example.financetracker.ui.locale.Language
 import com.example.financetracker.ui.locale.Strings
@@ -24,10 +28,61 @@ data class BackupMsg(val text: String, val isError: Boolean)
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settings: SettingsRepository,
-    private val backup: BackupRepository
+    private val backup: BackupRepository,
+    private val csv: CsvExportRepository,
+    private val repo: TransactionRepository
 ) : ViewModel() {
     val lang: StateFlow<Language> = settings.lang
     fun setLanguage(l: Language) = settings.setLanguage(l)
+
+    /** Счета для выбора при CSV-экспорте (заполняется при открытии диалога). */
+    private val _accounts = MutableStateFlow<List<AccountEntity>>(emptyList())
+    val accounts: StateFlow<List<AccountEntity>> = _accounts.asStateFlow()
+
+    val currentAccountId: Int get() = settings.currentAccountId()
+
+    /** Загружает список счетов (вызывается перед диалогом выбора счёта). */
+    fun refreshAccounts() {
+        viewModelScope.launch {
+            _accounts.value = runCatching { repo.listAccounts() }.getOrDefault(emptyList())
+        }
+    }
+
+    /** Имя CSV-файла: счёт + дата/время (для CreateDocument). */
+    fun suggestCsvName(accountId: Int): String {
+        val name = _accounts.value.firstOrNull { it.id == accountId }?.name ?: "account"
+        return CsvExportRepository.suggestFileName(name, System.currentTimeMillis())
+    }
+
+    /** Экспорт истории счёта [accountId] в CSV (все валюты). */
+    fun exportCsv(uri: Uri, accountId: Int, strings: Strings) {
+        if (_busy.value) return
+        viewModelScope.launch {
+            _busy.value = true
+            _message.value = null
+            try {
+                val labels = CsvLabels(
+                    date = strings.csvDate,
+                    time = strings.csvTime,
+                    type = strings.csvType,
+                    category = strings.category,
+                    income = strings.csvIncome,
+                    expense = strings.csvExpense,
+                    currency = strings.csvCurrency,
+                    note = strings.note,
+                    total = strings.csvTotal,
+                    typeOf = { inc -> if (inc) strings.incomeChip else strings.expenseChip },
+                    catName = { strings.cat(it) }
+                )
+                val n = csv.exportCsv(uri, accountId, labels)
+                _message.value = BackupMsg(strings.csvDone.replace("{N}", n.toString()), false)
+            } catch (_: Throwable) {
+                _message.value = BackupMsg(strings.csvErr, true)
+            } finally {
+                _busy.value = false
+            }
+        }
+    }
 
     /** Флаг длительной операции — включает спиннер на экране настроек. */
     private val _busy = MutableStateFlow(false)
