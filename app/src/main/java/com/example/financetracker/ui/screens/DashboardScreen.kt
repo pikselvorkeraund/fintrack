@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
@@ -151,7 +152,15 @@ fun DashboardScreen(
                 // Сначала выбор валюты, затем шестерёнка настроек
                 var exp by remember { mutableStateOf(false) }
                 Box {
-                    TextButton(onClick = { exp = true }) { Text("${cur.code} ${cur.symbol}") }
+                    // Выбор валюты — как у счёта: подпись + стрелка вниз
+                    TextButton(onClick = { exp = true }) {
+                        Text("${cur.code} ${cur.symbol}")
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                     DropdownMenu(expanded = exp, onDismissRequest = { exp = false }) {
                         Currency.entries.forEach { c ->
                             DropdownMenuItem(
@@ -229,7 +238,7 @@ fun DashboardScreen(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                         ) {
-                            Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                            Column(Modifier.padding(horizontal = 6.dp, vertical = 8.dp)) {
                                 // Строка 1: название периода слева, шеврон справа
                                 // (шеврон на первой строке — визуально «кнопка»)
                                 Row(
@@ -264,7 +273,7 @@ fun DashboardScreen(
                                     Spacer(Modifier.width(4.dp))
                                     Text(
                                         compact(st.net),
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -436,28 +445,43 @@ fun AddDlg(
         title = { Text(if (inc) s.addIncome else s.addExpense) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Тип записи и дата — в ОДНОЙ строке, вписанной в ширину
+                // диалога: чипы и кнопка даты на labelSmall, у кнопки
+                // уменьшены внутренние отступы и иконка, текст в две строки
+                // по центру, слева — минимальный зазор 8.dp
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(!inc, { inc = false }, { Text(s.expenseChip) })
-                    Spacer(Modifier.width(8.dp))
-                    FilterChip(inc, { inc = true }, { Text(s.incomeChip) })
+                    FilterChip(
+                        !inc,
+                        { inc = false },
+                        { Text(s.expenseChip, style = MaterialTheme.typography.labelSmall) }
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    FilterChip(
+                        inc,
+                        { inc = true },
+                        { Text(s.incomeChip, style = MaterialTheme.typography.labelSmall) }
+                    )
                     Spacer(Modifier.weight(1f))
                     // Текущие дата и время записи — кнопка, открывающая пикеры
                     FilledTonalButton(
                         onClick = { showDate = true },
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        modifier = Modifier.padding(start = 8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(
                             Icons.Default.CalendarMonth,
                             contentDescription = null,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(Modifier.width(6.dp))
+                        Spacer(Modifier.width(4.dp))
                         Text(
-                            SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(ts)),
-                            style = MaterialTheme.typography.labelMedium
+                            SimpleDateFormat("dd.MM\nHH:mm", Locale.getDefault()).format(Date(ts)),
+                            style = MaterialTheme.typography.labelSmall,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2
                         )
                     }
                 }

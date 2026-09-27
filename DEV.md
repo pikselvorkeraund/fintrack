@@ -357,7 +357,7 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 1. Карточка баланса — содержит заголовок «Баланс» и кнопку `IconButton`
    (`ExpandMore`/`ExpandLess`) для сворачивания/разворачивания. Состояние
    хранится В FinanceViewModel как `Map<accountId, Boolean>`
-   (`balanceExpandedMap`/`isBalanceExpanded`/`toggleBalance`) — переживает
+   (`balanceExpandedMap`/`toggleBalance`) — переживает
    переходы на Настройки/Статистику/Счёта в рамках сессии, но не сохраняется
    между запусками (после выхода из приложения баланс снова скрыт). В
    свернутом состоянии (по умолчанию, для счёта без записи в карте — false)
@@ -365,9 +365,9 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
    валюты через `amountStr()`,
    число `IncomeGreen` при `≥ 0`, `error` при `< 0`), строка дохода/расхода.
 2. Компактная статистика (`Row` из карточек `weight(1f)`) — чистая сумма за
-   `DAY/WEEK/MONTH/YEAR`, мелкий шрифт, формат через `compact()`, цвет
-   `IncomeGreen`/`error` по знаку. Показывается **только** когда
-   `balanceExpanded = true` (скрывается вместе со сворачиванием баланса).
+   `DAY/WEEK/MONTH/YEAR`, формат через `compact()`, цвет `IncomeGreen`/
+   `error` по знаку. Показывается **только** когда `balanceExpanded = true`
+   (скрывается вместе со сворачиванием баланса).
 3. `LazyColumn` с keyset-ленивой загрузкой: `LaunchedEffect` + `snapshotFlow`
    по `LazyListState` триггерит `vm.loadMore()` за 3 элемента до конца;
    внизу спиннер при `loadingMore`; пустое состояние `s.noRecords` с
@@ -384,7 +384,10 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 trailing-иконка `ArrowDropDown`; `clickable(role = Role.Button,
 onClickLabel = s.changeAccount)` — тап открывает `onOpenAccounts()`.
 `onClickLabel` — новая строка в `Strings` (`changeAccount`: EN «Change
-account» / RU «Сменить счёт»). Все операции
+account» / RU «Сменить счёт»). В `actions` — выбор валюты: `TextButton`
+с подписью `code symbol` и trailing-иконкой `ArrowDropDown` (как у
+кнопки счёта), открывающий `DropdownMenu` со всеми `Currency.entries`,
+затем шестерёнка настроек. Все операции
 (баланс, история, статистика, добавление, удаление) идут только с
 текущим `accountId` из `SettingsRepository`.
 
@@ -400,7 +403,9 @@ account» / RU «Сменить счёт»). Все операции
 `weight(1f)` всё в один ряд не помещается и «съезжает»):
 строка 1 — подпись периода слева + `ChevronRight` у правого края
 (`SpaceBetween`); строка 2 — иконка `BarChart` и `compact(net)`
-(ellipsis по длине суммы). ripple/onClickLabel добавлены через
+(ellipsis по длине суммы). Сумма — `labelMedium` Bold (`bodyMedium`
+не влезал по ширине в узкую колонку), горизонтальные отступы Column
+карточки — 6.dp. ripple/onClickLabel добавлены через
 clip+clickable поверх Card.
 
 ### 8.1 AddDlg (диалог добавления записи)
@@ -412,9 +417,13 @@ isIncome, timestamp)`. Внутри:
   и фильтром ввода (цифры + запятая/точка); парсинг `replace(',', '.')`,
   невалидный ввод подсвечивается `isError`; кнопка «Добавить» неактивна,
   пока сумма не положительна или не выбрана категория.
-- **Тип** (Расход/Доход) — чипы `FilterChip`, **справа в той же строке** —
-  `FilledTonalButton` с иконкой `CalendarMonth` и текущими датой/временем
-  записи (`dd.MM HH:mm`, `SimpleDateFormat`). Тап открывает
+- **Тип** (Расход/Доход) — чипы `FilterChip` (подписи `labelSmall`),
+  **справа в той же строке** — `FilledTonalButton` с иконкой
+  `CalendarMonth` (14.dp) и текущими датой/временем записи: подпись
+  `dd.MM\nHH:mm` в ДВЕ строки по центру (`labelSmall`,
+  `TextAlign.Center`, `maxLines = 2`), `contentPadding` 8.dp,
+  отступ слева 8.dp — одной строкой кнопка не влезала в ширину
+  диалога и упиралась в край. Тап открывает
   `DatePickerDialog` (Material3, UTC-конвертация `initialSelectedDateMillis`
   и обратно), после ОК сразу — диалог с `TimePicker` (`rememberTimePickerState`,
   24ч). Результат пикеров — `ts`, уходит в `ok` и далее в `timestamp`.
