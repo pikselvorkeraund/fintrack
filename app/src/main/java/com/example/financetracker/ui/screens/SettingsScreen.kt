@@ -163,7 +163,7 @@ fun SettingsScreen(
                         .fillMaxWidth()
                         .clickable {
                             vm.refreshAccounts()
-                            csvAccId = vm.currentAccountId()
+                            csvAccId = vm.currentAccountId
                             dialog = 4
                         },
                     shape = RoundedCornerShape(12.dp)

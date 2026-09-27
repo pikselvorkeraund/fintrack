@@ -145,7 +145,7 @@ class CsvExportRepository @Inject constructor(
                 listOf("", "", lb.total, "", num(inc), num(exp), cur, "")
             )
         }
-        os.write(sb.toByteArray(Charsets.UTF_8))
+        os.write(sb.toString().toByteArray(Charsets.UTF_8))
         os.flush()
     }
 

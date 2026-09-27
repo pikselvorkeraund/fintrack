@@ -15,6 +15,7 @@ import com.example.financetracker.data.repository.TransactionRepository
 import com.example.financetracker.data.settings.SettingsRepository
 import com.example.financetracker.ui.locale.Language
 import com.example.financetracker.ui.locale.Strings
+import com.example.financetracker.ui.locale.cat
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
