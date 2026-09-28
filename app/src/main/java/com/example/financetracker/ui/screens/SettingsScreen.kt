@@ -2,6 +2,8 @@
 
 package com.example.financetracker.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -14,15 +16,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.financetracker.BuildConfig
 import com.example.financetracker.data.repository.ImportMode
 import com.example.financetracker.ui.locale.Language
 import com.example.financetracker.ui.locale.LocalStrings
@@ -36,6 +41,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val s = LocalStrings.current
+    val ctx = LocalContext.current
     val lang by vm.lang.collectAsState()
     val busy by vm.busy.collectAsState()
     val msg by vm.message.collectAsState()
@@ -209,6 +215,49 @@ fun SettingsScreen(
                             )
                         }
                     }
+                }
+
+                Spacer(Modifier.height(24.dp))
+                Text(s.aboutTitle, style = MaterialTheme.typography.titleMedium)
+                Spacer(Modifier.height(8.dp))
+                // Версия = versionName из app/build.gradle.kts (BuildConfig
+                // генерируется благодаря buildConfig = true в buildFeatures)
+                Text(
+                    "${s.versionLabel} ${BuildConfig.VERSION_NAME}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(4.dp))
+                // Ссылка на сайт разработчика: ACTION_VIEW — само приложение
+                // остаётся офлайн (разрешения INTERNET нет), открывает браузер
+                Row(
+                    Modifier
+                        .clickable {
+                            try {
+                                ctx.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://github.com/pikselvorkeraund/fintrack")
+                                    )
+                                )
+                            } catch (_: Throwable) {
+                                // Нет обработчика (браузер удалён) — тихо, не роняем
+                            }
+                        }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Info, null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        s.developerSite,
+                        Modifier.padding(start = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 

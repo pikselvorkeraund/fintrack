@@ -110,6 +110,10 @@ data class Strings(
     val csvTotal: String,
     val csvDone: String,
     val csvErr: String,
+    // ---------- О приложении (Настройки) ----------
+    val aboutTitle: String,
+    val versionLabel: String,
+    val developerSite: String,
     /** Тег языка для java.time-форматирования заголовков периодов ("en"/"ru"). */
     val langCode: String,
     val categories: Map<String, String>
@@ -228,6 +232,9 @@ val StringsEn = Strings(
     csvTotal = "Total",
     csvDone = "Exported {N} records",
     csvErr = "Failed to export CSV file",
+    aboutTitle = "About",
+    versionLabel = "Version",
+    developerSite = "Developer website",
     langCode = "en",
     categories = catsEn
 )
@@ -331,6 +338,9 @@ val StringsRu = Strings(
     csvTotal = "Итого",
     csvDone = "Экспортировано записей: {N}",
     csvErr = "Не удалось создать CSV-файл",
+    aboutTitle = "О приложении",
+    versionLabel = "Версия",
+    developerSite = "Сайт разработчика",
     langCode = "ru",
     categories = catsRu
 )

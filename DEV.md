@@ -39,7 +39,14 @@ FinTrack — офлайн-приложение для учёта личных ф
 - SQLCipher 4.6.1 (`net.zetetic:sqlcipher-android`)
 - Hilt 2.53.1 (Dagger + navigation-compose)
 - minSdk 26, targetSdk/compileSdk 35, JVM target 21
-- `versionCode`/`versionName` — в [`app/build.gradle.kts`](app/build.gradle.kts:15)
+- `versionCode`/`versionName` — в [`app/build.gradle.kts`](app/build.gradle.kts:15):
+  `versionCode` монотонно растёт при каждом релизе (без его подъёма APK не
+  установится поверх), `versionName` — человекочитаемая метка. Включён
+  `buildFeatures { buildConfig = true }` — `BuildConfig.VERSION_NAME`
+  показывается в разделе «О приложении» настроек (см. §14).
+- Валюты: RUB, USD, CNY, THB, PHP, EUR, TRY, EGP, AED, VND, BYN
+  ([`Currency`](app/src/main/java/com/example/financetracker/data/model/Currency.kt));
+  добавление валюты миграции БД не требует (см. §10).
 
 ### Как собирать и проверять (ВАЖНО)
 **Локальный билд запрещён** (см. [`AGENTS.md`](AGENTS.md)). Сборка и проверка
@@ -104,7 +111,7 @@ ui/
     LockScreen.kt             — экран узора
     DashboardScreen.kt        — главный экран + AddDlg (см. §8)
     AccountsScreen.kt         — CRUD-справочник счетов
-    SettingsScreen.kt         — выбор языка + экспорт/импорт + CSV (см. §12–13)
+    SettingsScreen.kt         — выбор языка + экспорт/импорт + CSV + «О приложении» (см. §12–14)
     StatsScreen.kt            — экран «Периоды»: вкладки Статистика/Операции (см. §8.2)
   theme/Theme.kt              — Material3 dark/light палитра
   viewmodel/
@@ -695,7 +702,21 @@ Snackbar с числом записей; типы ошибок различаю�
 
 ---
 
-## 14. Известные нюансы
+## 14. «О приложении»
+
+В конце [`SettingsScreen`](app/src/main/java/com/example/financetracker/ui/screens/SettingsScreen.kt:34) — раздел `s.aboutTitle`:
+- строка `s.versionLabel + BuildConfig.VERSION_NAME` (значение берётся из
+  `app/build.gradle.kts`, в коде не дублируется);
+- кликабельная строка `s.developerSite` → `Intent.ACTION_VIEW` на
+  `https://github.com/pikselvorkeraund/fintrack`. Разрешения INTERNET у
+  приложения нет — открытие делегируется браузеру системы, офлайн-политика
+  соблюдается; отсутствие обработчика (браузер отключён) перехватывается
+  `try/catch` и игнорируется.
+- Строки `aboutTitle/versionLabel/developerSite` — в оба языка.
+
+---
+
+## 15. Известные нюансы
 
 - **Экран статистики и пустой ключ периода**: `StatsState` при создании имеет
   `key = ""` (до первой загрузки из БД). `periodTitle()`, `canGoBack`/
@@ -754,7 +775,7 @@ Snackbar с числом записей; типы ошибок различаю�
 
 ---
 
-## 15. Актуальность документации
+## 16. Актуальность документации
 
 **Этот файл необходимо держать в актуальном состоянии при заметных изменениях
 проекта.** Любая существенная правка — новая сущность/миграция, изменение

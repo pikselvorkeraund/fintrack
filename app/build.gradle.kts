@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.financetracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.4.0-periods"
+        versionCode = 8
+        versionName = "1.4.1-about"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         vectorDrawables { useSupportLibrary = true }
     }
@@ -75,7 +75,9 @@ android {
         targetCompatibility = JavaVersion.VERSION_21
     }
     kotlinOptions { jvmTarget = "21" }
-    buildFeatures { compose = true }
+    // buildConfig = true — нужен для BuildConfig.VERSION_NAME в разделе
+    // «О приложении» настроек (AGP 8 не генерирует BuildConfig по умолчанию)
+    buildFeatures { compose = true; buildConfig = true }
 }
 dependencies {
     implementation(libs.core.ktx)
