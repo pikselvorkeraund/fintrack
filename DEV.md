@@ -181,7 +181,7 @@ ui/
 - Флаг `setupHint` (`plm.isSet == false`, true при `Wiped`/`reset()`,
   снимается сразу после `save()` в Setup) выбирает мелкую подсказку на
   [`LockScreen`](app/src/main/java/com/example/financetracker/ui/screens/LockScreen.kt):
-  `hintSetup` («задайте ключ для шифрования») vs `hintEnter`
+  `hintSetup` («этим ключом будет зашифрована новая база данных») vs `hintEnter`
   («Введите ключ для входа»).
 - **Техническая диагностика (`CrashLog`, `lastError`, стектрейсы,
   «likely SIGSEGV») на экран не выводится** — `db.debugInfo()` читается

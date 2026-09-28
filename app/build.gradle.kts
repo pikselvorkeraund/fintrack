@@ -5,6 +5,11 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
+
+// Единый источник имени версии: используется в defaultConfig и для
+// переименования APK (fintrack-v<versionName>.apk вместо app-release.apk)
+val appVersionName = "1.4.2"
+
 android {
     namespace = "com.example.financetracker"
     compileSdk = 35
@@ -12,8 +17,8 @@ android {
         applicationId = "com.example.financetracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.4.1-about"
+        versionCode = 9
+        versionName = appVersionName
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         vectorDrawables { useSupportLibrary = true }
     }
@@ -78,6 +83,16 @@ android {
     // buildConfig = true — нужен для BuildConfig.VERSION_NAME в разделе
     // «О приложении» настроек (AGP 8 не генерирует BuildConfig по умолчанию)
     buildFeatures { compose = true; buildConfig = true }
+
+    // AGP по умолчанию пишет app-release.apk / app-debug.apk — в GitHub
+    // Release такой ассет не отличить между релизами. Выходной файл:
+    // fintrack-v<versionName>.apk (glob **/*.apk в workflow подхватывает его)
+    applicationVariants.all {
+        outputs.all {
+            (this as com.android.build.gradle.internal.api.BaseVariantOutputImpl)
+                .outputFileName = "fintrack-v$appVersionName.apk"
+        }
+    }
 }
 dependencies {
     implementation(libs.core.ktx)

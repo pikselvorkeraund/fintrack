@@ -32,6 +32,15 @@ signatures, imports, brackets, layer wiring (see the checklist in DEV.md §11).
 
 Download the artifact from the **Actions** tab of the repository.
 
+### APK file name
+
+The release/debug APK is renamed by `app/build.gradle.kts`
+(`applicationVariants.all { outputs.all { ... } }`) to
+`fintrack-v<versionName>.apk` (e.g. `fintrack-v1.4.2.apk`) instead of the
+default `app-release.apk`, so release assets are distinguishable between
+versions. The version is kept in a single `appVersionName` val used by both
+`defaultConfig` and the rename rule — bump it there when releasing.
+
 ### Publishing a GitHub Release
 
 The workflow ([`.github/workflows/build.yml`](../.github/workflows/build.yml))
@@ -62,8 +71,8 @@ Steps to publish:
    git tag v1.4.1
    git push origin v1.4.1
    ```
-   (tag `v*` must match `versionName` without the feature suffix, e.g.
-   `versionName = "1.4.1-about"` → tag `v1.4.1`).
+   (tag `v*` must equal `versionName`, e.g. `versionName = "1.4.2"` →
+   tag `v1.4.2`).
 4. Wait for the "Build APK" run to finish; the release appears under
    **Releases** with the APK attached.
 
@@ -90,8 +99,11 @@ Three independent version spaces:
 1. **App version** — [`app/build.gradle.kts`](../app/build.gradle.kts):
    `versionCode` (monotonic integer; must increase for every release, Android
    refuses to install over an equal/lower one) and `versionName`
-   (`MAJOR.MINOR.PATCH-feature`, human label, shown in Settings → About via
-   `BuildConfig.VERSION_NAME`).
+   (`MAJOR.MINOR.PATCH` — **clean, user-facing**, shown in Settings → About
+   via `BuildConfig.VERSION_NAME`). Feature labels (`-accounts`, `-backup`,
+   `-periods`, …) are **not** part of `versionName` anymore — they were
+   internal dev-milestone tags that leaked into the UI; keep them in commit
+   messages / release notes instead.
 2. **DB schema version** — `AppDatabase.VERSION` (currently 5). Any entity
    change requires: bump `VERSION` → write `MIGRATION_(N-1)_N` → register it
    in `DbHolder.build()` → bump `versionCode`. Without an explicit migration
