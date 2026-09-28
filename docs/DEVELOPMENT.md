@@ -39,6 +39,14 @@ runs on every push to `main`/`master` **and on any tag matching `v*`**. When it
 runs for a `v*` tag, after building it publishes a **GitHub Release** named
 after the tag, with auto-generated release notes and all built APKs attached.
 
+The release step needs `permissions: contents: write` in the workflow file
+(already set). If the run fails with **403 "Resource not accessible by
+integration"**, either the tagged commit predates that block (the workflow is
+read from the tag's commit) or the repository default workflow permissions are
+"Read-only" — fix: push the workflow to `main`, re-create the tag on the new
+commit (`git tag -f v1.4.1 && git push -f origin v1.4.1`), and/or enable
+Settings → Actions → General → **Read and write permissions**.
+
 Steps to publish:
 
 1. Make sure the release is ready: schema migrations registered, `versionCode`

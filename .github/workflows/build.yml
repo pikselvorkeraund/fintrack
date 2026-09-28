@@ -5,6 +5,13 @@ on:
     # Публикация релиза: push тега вида v1.4.1 (см. docs/DEVELOPMENT.md)
     tags: [ 'v*' ]
   workflow_dispatch:
+
+# Права GITHUB_TOKEN для шага публикации релиза. Без этого блока токен
+# наследует настройки репозитория (Settings → Actions → General → Workflow
+# permissions), и при "Read repository permissions" создание релиза падает
+# с 403 "Resource not accessible by integration".
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
