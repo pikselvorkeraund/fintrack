@@ -32,6 +32,36 @@ signatures, imports, brackets, layer wiring (see the checklist in DEV.md §11).
 
 Download the artifact from the **Actions** tab of the repository.
 
+### Publishing a GitHub Release
+
+The workflow ([`.github/workflows/build.yml`](../.github/workflows/build.yml))
+runs on every push to `main`/`master` **and on any tag matching `v*`**. When it
+runs for a `v*` tag, after building it publishes a **GitHub Release** named
+after the tag, with auto-generated release notes and all built APKs attached.
+
+Steps to publish:
+
+1. Make sure the release is ready: schema migrations registered, `versionCode`
+   and `versionName` bumped, DEV.md updated, manual checklist passed
+   (DEV.md §11).
+2. **Configure the release signing secrets** (Settings → Secrets and variables
+   → Actions): `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`,
+   `KEY_PASSWORD`. Without them the workflow builds a debug APK with the
+   runner's auto keystore — such an APK must **not** be published as a release
+   (it is incompatible between runs and cannot be updated in place).
+3. Commit and push `main`, then tag and push:
+   ```bash
+   git tag v1.4.1
+   git push origin v1.4.1
+   ```
+   (tag `v*` must match `versionName` without the feature suffix, e.g.
+   `versionName = "1.4.1-about"` → tag `v1.4.1`).
+4. Wait for the "Build APK" run to finish; the release appears under
+   **Releases** with the APK attached.
+
+Alternatively, the release can be created manually on the Releases page and the
+APK downloaded from the Actions artifacts of the corresponding run.
+
 ### Signing (repository secrets)
 
 | Secrets | Result |

@@ -2,6 +2,8 @@ name: Build APK
 on:
   push:
     branches: [ main, master ]
+    # Публикация релиза: push тега вида v1.4.1 (см. docs/DEVELOPMENT.md)
+    tags: [ 'v*' ]
   workflow_dispatch:
 jobs:
   build:
@@ -56,3 +58,16 @@ jobs:
         with:
           name: finance-tracker-apk
           path: app/build/outputs/apk/**/*.apk
+
+      # --- Публикация GitHub Release при push тега v* ---
+      # Требует настроенные release-секреты (иначе в релиз попадёт debug-APK
+      # с авто-кейстором раннера — такой релиз выкладывать нельзя).
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: app/build/outputs/apk/**/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
