@@ -104,7 +104,7 @@ di/
   AppModule.kt            — пустой Hilt-модуль (БД ленивая, см. §5)
 
 ui/
-  components/PatternLock.kt   — Canvas-виджет 3×3 узора
+  components/PatternLock.kt   — Canvas-виджет 3×3 узора (неактивные точки — полые кольца onSurfaceVariant)
   locale/AppLocale.kt         — Strings, StringsEn/Ru, LocalStrings, cat(), periodTitle()
   navigation/AppNavGraph.kt   — NavHost: lock → main → settings / accounts / stats
   screens/
@@ -400,8 +400,8 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
    переходы на Настройки/Статистику/Счёта в рамках сессии, но не сохраняется
    между запусками (после выхода из приложения баланс снова скрыт). В
    свернутом состоянии (по умолчанию, для счёта без записи в карте — false)
-   виден только заголовок; в развёрнутом — сумма баланса (белый символ
-   валюты через `amountStr()`,
+   виден только заголовок; в развёрнутом — сумма баланса (символ валюты
+   через `amountStr()` — чёрный на светлой теме, белый на тёмной;
    число `IncomeGreen` при `≥ 0`, `error` при `< 0`), строка дохода/расхода.
 2. Компактная статистика (`Row` из карточек `weight(1f)`) — чистая сумма за
    `DAY/WEEK/MONTH/YEAR`, формат через `compact()`, цвет `IncomeGreen`/
@@ -580,8 +580,9 @@ opsCursorTs/opsCursorId). `setOpsType`/`setOpsCat` — сброс окна и
 - Ошибки (валldation, БД) показываются через `Snackbar`.
 
 Хелперы в `DashboardScreen.kt`: `fmt()` (полный формат с валютой, для диалогов),
-`amountStr()` (AnnotatedString: число `numColor`, символ валюты `Color.White`;
-параметр `withSymbol` включает/выключает символ), `IncomeGreen`
+`amountStr()` (`@Composable`, AnnotatedString: число `numColor`, символ валюты
+по теме — мягкий чёрный `0xDD000000` на светлой / `Color.White` на тёмной через
+`isSystemInDarkTheme()`; параметр `withSymbol` включает/выключает символ), `IncomeGreen`
 (`Color(0xFF81C784)` — цвет положительных сумм), `periodLabel()`, `compact()`.
 
 ---
