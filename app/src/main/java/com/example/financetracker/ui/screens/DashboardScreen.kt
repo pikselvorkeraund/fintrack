@@ -6,6 +6,7 @@ import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -690,11 +691,13 @@ private fun periodLabel(s: com.example.financetracker.ui.locale.Strings, p: Peri
         PeriodType.TOTAL -> ""
     }
 
-/** Компактный вид суммы с суффиксами k/m: +12,4k / −48,9k / +318k */
+/** Компактный вид суммы с суффиксами k/m/b/t: +12,4k / −48,9k / +318k / +2,5b / +1,3t */
 private fun compact(v: Double): String {
     val a = kotlin.math.abs(v)
     val sign = if (v < 0) "-" else "+"
     val (num, suf) = when {
+        a >= 1_000_000_000_000 -> a / 1_000_000_000_000 to "t"
+        a >= 1_000_000_000 -> a / 1_000_000_000 to "b"
         a >= 1_000_000 -> a / 1_000_000 to "m"
         a >= 1_000 -> a / 1_000 to "k"
         else -> a to ""
@@ -712,16 +715,22 @@ private val IncomeGreen = Color(0xFF81C784)
  * @param value число
  * @param c     валюта
  * @param numColor  цвет числа и знака
- * @param withSymbol если true — добавить символ валюты белым (использовать только там, где он был в оригинале)
+ * @param withSymbol если true — добавить символ валюты
+ *
+ * Символ валюты адаптируется под тему: мягкий чёрный на светлой,
+ * белый на тёмной — согласованно с [AppTheme] (тот тоже опирается на
+ * [isSystemInDarkTheme]).
  */
+@Composable
 private fun amountStr(sign: String, value: Double, c: Currency, numColor: Color, withSymbol: Boolean = true) =
     buildAnnotatedString {
+        val symbolColor = if (isSystemInDarkTheme()) Color.White else Color(0xDD000000)
         val num = sign + String.format("%,.2f", value) + (if (withSymbol) " " else "")
         withStyle(SpanStyle(color = numColor)) {
             append(num)
         }
         if (withSymbol) {
-            withStyle(SpanStyle(color = Color.White)) {
+            withStyle(SpanStyle(color = symbolColor)) {
                 append(c.symbol)
             }
         }
