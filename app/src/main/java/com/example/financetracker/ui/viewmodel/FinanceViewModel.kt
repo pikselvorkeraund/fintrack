@@ -234,4 +234,22 @@ class FinanceViewModel @Inject constructor(
             refreshTotals()
         }
     }
+
+    /**
+     * Редактирование записи активного счёта и валюты: repo.replace атомарно
+     * (withTransaction) снимает дельту старой строки из `stats`, обновляет
+     * транзакцию и добавляет дельту новой — суммы периода, категории и
+     * итоги пересобираются без скана. Окно дашборда сортировано по id:
+     * `id` не меняется, поэтому позиция записи та же — map-замена без
+     * перечитывания БД.
+     */
+    fun replace(old: TransactionEntity, new: TransactionEntity) {
+        viewModelScope.launch {
+            try {
+                repo.replace(old, new.copy(id = old.id))
+                _ui.update { s -> s.copy(items = s.items.map { if (it.id == old.id) new.copy(id = old.id) else it }) }
+            } catch (_: Throwable) { }
+            refreshTotals()
+        }
+    }
 }

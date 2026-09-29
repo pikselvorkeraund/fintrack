@@ -18,9 +18,16 @@ interface TransactionDao {
      * (lastTs = 0 — первая страница). Порядок timestamp DESC, id DESC и
      * продолжение пагинации по паре обслуживаются индексом
      * (accountId, currencyCode, timestamp, id) — таблица не сканируется.
+     *
+     * Фильтры вкладки «Операции» передаются sentinel'ом -1 (нет фильтра):
+     * `inc` — -1/0/1 (все / расход / доход), `cat` — -1 или categoryId.
+     * При выбранном фильтре по типу используется индекс
+     * (accountId, currencyCode, isIncome, timestamp, id), по категории —
+     * (accountId, currencyCode, categoryId, timestamp, id); при обоих
+     * SQLite выбирает более полезный из имеющихся.
      */
-    @Query("SELECT * FROM transactions WHERE accountId = :acc AND currencyCode = :cur AND timestamp >= :from AND timestamp < :to AND (:lastTs = 0 OR timestamp < :lastTs OR (timestamp = :lastTs AND id < :lastId)) ORDER BY timestamp DESC, id DESC LIMIT :limit")
-    suspend fun getPeriodPage(acc: Int, cur: String, from: Long, to: Long, lastTs: Long, lastId: Long, limit: Int): List<TransactionEntity>
+    @Query("SELECT * FROM transactions WHERE accountId = :acc AND currencyCode = :cur AND timestamp >= :from AND timestamp < :to AND (:inc = -1 OR isIncome = :inc) AND (:cat = -1 OR categoryId = :cat) AND (:lastTs = 0 OR timestamp < :lastTs OR (timestamp = :lastTs AND id < :lastId)) ORDER BY timestamp DESC, id DESC LIMIT :limit")
+    suspend fun getPeriodPage(acc: Int, cur: String, from: Long, to: Long, inc: Int, cat: Int, lastTs: Long, lastId: Long, limit: Int): List<TransactionEntity>
 
     @Query("SELECT COUNT(*) FROM transactions WHERE accountId = :acc AND currencyCode = :cur")
     suspend fun countFor(acc: Int, cur: String): Int
@@ -30,6 +37,14 @@ interface TransactionDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(t: TransactionEntity): Long
+
+    /**
+     * Обновление существующей строки по id (редактирование записи).
+     * Используется TransactionRepository.replace в одной транзакции
+     * с дельтами stats — сам по себе update статистики не трогает.
+     */
+    @Update
+    suspend fun update(t: TransactionEntity)
 
     @Delete
     suspend fun delete(t: TransactionEntity)

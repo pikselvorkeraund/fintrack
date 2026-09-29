@@ -21,12 +21,17 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
     /**
      * Страница записей за выбранный период (вкладка «Операции» экрана
      * «Периоды»): keyset по паре (timestamp, id) в диапазоне [from; to).
+     *
+     * Фильтры передаются sentinel'ом -1 (без фильтра):
+     * `inc` — -1 все / 0 расход / 1 доход; `cat` — -1 все категории или
+     * конкретный categoryId.
      */
     suspend fun periodPage(
         acc: Int, cur: String, from: Long, to: Long,
+        inc: Int, cat: Int,
         lastTs: Long, lastId: Long, limit: Int
     ): List<TransactionEntity> =
-        db.dao().getPeriodPage(acc, cur, from, to, lastTs, lastId, limit)
+        db.dao().getPeriodPage(acc, cur, from, to, inc, cat, lastTs, lastId, limit)
 
     suspend fun countFor(acc: Int, cur: String): Int = db.dao().countFor(acc, cur)
 
@@ -65,6 +70,22 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
         db.db().withTransaction {
             db.dao().deleteById(t.id)
             applyDelta(t, -1.0)
+        }
+
+    /**
+     * Замена записи при редактировании: в ОДНОЙ транзакции снимаем вклад
+     * старой строки (`old`, sign = -1), обновляем саму транзакцию и
+     * прибавляем вклад новой (`new`, sign = +1). Дельты считаются по
+     * `timestamp`/`categoryId`/`currencyCode`/`isIncome` каждой из строк,
+     * поэтому статика остаётся корректной, даже если запись переехала
+     * в другой период, категорию или тип. `new.id` обязан совпадать с
+     * `old.id` — @Update матчит именно по PK.
+     */
+    suspend fun replace(old: TransactionEntity, new: TransactionEntity) =
+        db.db().withTransaction {
+            applyDelta(old, -1.0)
+            db.dao().update(new)
+            applyDelta(new, 1.0)
         }
 
     suspend fun wipe() = db.db().withTransaction {

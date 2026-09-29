@@ -46,6 +46,12 @@ data class StatsState(
     val tab: StatsTab = StatsTab.STATS,
     /** id → имя категории (для карточек вкладки «Операции»). */
     val catNames: Map<Int, String> = emptyMap(),
+    /** Справочник категорий (список для фильтра «Все категории»). */
+    val cats: List<CategoryEntity> = emptyList(),
+    /** Фильтр вкладки «Операции» по типу: -1 все операции, 0 расход, 1 доход. */
+    val opsType: Int = -1,
+    /** Фильтр вкладки «Операции» по категории: -1 все категории, иначе categoryId. */
+    val opsCat: Int = -1,
     /** Загруженное окно операций выбранного периода (timestamp DESC, id DESC). */
     val ops: List<TransactionEntity> = emptyList(),
     /** Список загружен для текущего type+key (не перечитывать при возврате на вкладку). */
@@ -132,6 +138,74 @@ class StatsViewModel @Inject constructor(
         if (_state.value.tab == t) return
         _state.update { it.copy(tab = t) }
         if (t == StatsTab.OPS) ensureOpsLoaded()
+    }
+
+    /**
+     * Фильтр вкладки «Операции» по типу операции (-1 все / 0 расход / 1 доход).
+     * Смена типа сбрасывает фильтр категорий — под новый тип подставляется
+     * другой список категорий, и «Все категории» остаётся единственным
+     * корректным значением по умолчанию. Любое изменение фильтра — сброс
+     * окна (новый курсор) и перезагрузка, если вкладка активна.
+     */
+    fun setOpsType(t: Int) {
+        if (_state.value.opsType == t) return
+        _state.update {
+            it.copy(
+                opsType = t, opsCat = -1, ops = emptyList(), opsLoaded = false,
+                opsLoading = false, opsLoadingMore = false, opsHasMore = false,
+                opsCursorTs = 0, opsCursorId = 0
+            )
+        }
+        if (_state.value.tab == StatsTab.OPS) loadOps(reset = true)
+    }
+
+    /** Фильтр вкладки «Операции» по категории (-1 все / categoryId выбранного типа). */
+    fun setOpsCat(c: Int) {
+        if (_state.value.opsCat == c) return
+        _state.update {
+            it.copy(
+                opsCat = c, ops = emptyList(), opsLoaded = false,
+                opsLoading = false, opsLoadingMore = false, opsHasMore = false,
+                opsCursorTs = 0, opsCursorId = 0
+            )
+        }
+        if (_state.value.tab == StatsTab.OPS) loadOps(reset = true)
+    }
+
+    /**
+     * Создание категории из формы редактирования (пункт «Добавить новую»):
+     * обновляет справочник в состоянии — фильтр «Все категории» и селектор
+     * категории сразу покажут новую. Возвращает id новой/существующей.
+     */
+    suspend fun addCategory(name: String, isIncome: Boolean): Int? {
+        val id = runCatching { repo.addCategory(name, isIncome) }.getOrNull() ?: return null
+        val cats = runCatching { repo.listCategories() }.getOrDefault(emptyList())
+        _state.update { s -> s.copy(cats = cats, catNames = cats.associate { it.id to it.name }) }
+        return id
+    }
+
+    /**
+     * Редактирование записи вкладки «Операции»: repo.replace атомарно
+     * снимает дельту старой строки из `stats`, обновляет транзакцию и
+     * добавляет дельту новой. Окно сортировано по timestamp и фильтровано —
+     * правка (дата/тип/категория/сумма) может переместить запись или вывести
+     * её за фильтр, поэтому страницу перечитываем с нуля (reset), а графики
+     * и итоги обновляем из `stats`.
+     */
+    fun edit(
+        old: TransactionEntity,
+        amount: Double, categoryId: Int, note: String, income: Boolean, timestamp: Long
+    ) {
+        viewModelScope.launch {
+            try {
+                repo.replace(
+                    old,
+                    old.copy(amount = amount, categoryId = categoryId, note = note, isIncome = income, timestamp = timestamp)
+                )
+            } catch (_: Throwable) { return@launch }
+            loadOps(reset = true)
+            loadBars()
+        }
     }
 
     /** Листание на delta периодов назад/вперёд, в границах истории (minKey..maxKey). */
@@ -228,7 +302,8 @@ class StatsViewModel @Inject constructor(
                     totalIncome = totInc,
                     loading = false,
                     empty = exp.isEmpty() && inc.isEmpty(),
-                    catNames = cats.associate { it.id to it.name }
+                    catNames = cats.associate { it.id to it.name },
+                    cats = cats
                 )
             }
         }
@@ -292,7 +367,7 @@ class StatsViewModel @Inject constructor(
             val lastTs = if (reset) 0 else st0.opsCursorTs
             val lastId = if (reset) 0 else st0.opsCursorId
             val page = try {
-                repo.periodPage(acc, curCode, range.first, range.second, lastTs, lastId, PAGE_SIZE)
+                repo.periodPage(acc, curCode, range.first, range.second, st0.opsType, st0.opsCat, lastTs, lastId, PAGE_SIZE)
             } catch (_: Throwable) { emptyList() }
             // Гонка: за время запроса сменились тип/ключ/вкладка — результат устарел
             if (_state.value.type != st0.type || _state.value.key != st0.key) return@launch

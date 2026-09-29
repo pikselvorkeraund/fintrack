@@ -21,7 +21,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Settings
@@ -89,13 +89,17 @@ fun DashboardScreen(
     var dlg by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var viewed by remember { mutableStateOf<TransactionEntity?>(null) }
+    // Редактируемая запись (пункт «Поменять» меню карточки) и id записи,
+    // чьё меню открыто — одна переменная, чтобы открытым было только одно
+    var edit by remember { mutableStateOf<TransactionEntity?>(null) }
+    var menuFor by remember { mutableStateOf<Long?>(null) }
     var backOnce by remember { mutableStateOf(false) }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val activity = LocalContext.current as Activity
 
     // Двойное нажатие Назад: первое — подсказка, повторное — выход
-    BackHandler(enabled = !dlg && toDelete == null && viewed == null) {
+    BackHandler(enabled = !dlg && toDelete == null && viewed == null && edit == null && menuFor == null) {
         if (backOnce) {
             activity.finishAffinity()
         } else {
@@ -184,7 +188,10 @@ fun DashboardScreen(
                 Modifier.fillMaxWidth().padding(16.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
-                Column(Modifier.padding(20.dp)) {
+                // 1A: вертикальные отступы карточки сжаты (20→10),
+                // Spacer между блоками 8→4 — экономия высоты как в
+                // свёрнутом, так и в развёрнутом состоянии.
+                Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
                     Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -205,7 +212,7 @@ fun DashboardScreen(
                             style = MaterialTheme.typography.headlineLarge,
                             fontWeight = FontWeight.Bold
                         )
-                        Spacer(Modifier.height(8.dp))
+                        Spacer(Modifier.height(4.dp))
                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
                                 Text(s.income)
@@ -340,8 +347,30 @@ fun DashboardScreen(
                                 amountStr(if (t.isIncome) "+" else "-", t.amount, Currency.fromCode(t.currencyCode), if (t.isIncome) IncomeGreen else MaterialTheme.colorScheme.error),
                                 fontWeight = FontWeight.Bold
                             )
-                            IconButton(onClick = { toDelete = t }) {
-                                Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                            // Кнопка «три точки»: меню «Поменять» / «Удалить».
+                            // Удаление — как раньше, только через AlertDialog
+                            // подтверждения (правило AGENTS.md).
+                            Box {
+                                IconButton(onClick = { menuFor = t.id }) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = s.menuMore,
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = menuFor == t.id,
+                                    onDismissRequest = { menuFor = null }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(s.edit) },
+                                        onClick = { edit = t; menuFor = null }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(s.delete, color = MaterialTheme.colorScheme.error) },
+                                        onClick = { toDelete = t; menuFor = null }
+                                    )
+                                }
                             }
                         }
                     }
@@ -401,33 +430,62 @@ fun DashboardScreen(
         AddDlg(
             currency = cur,
             categories = cats,
+            initial = null,
             onCreateCategory = { name, inc -> vm.addCategory(name, inc) },
             dismiss = { dlg = false },
             ok = { a, c, n, i, t -> vm.add(a, c, n, i, t); dlg = false }
         )
     }
+
+    // Редактирование записи: та же форма, что при создании, но с
+    // заполненными значениями и кнопкой «Сохранить»; при сохранении
+    // запись заменяется новыми значениями (валюта остаётся исходной)
+    edit?.let { e ->
+        AddDlg(
+            currency = Currency.fromCode(e.currencyCode),
+            categories = cats,
+            initial = e,
+            onCreateCategory = { name, inc -> vm.addCategory(name, inc) },
+            dismiss = { edit = null },
+            ok = { a, c, n, i, t ->
+                vm.replace(e, e.copy(amount = a, categoryId = c, note = n, isIncome = i, timestamp = t))
+                edit = null
+            }
+        )
+    }
 }
 
 /**
- * Диалог добавления записи: числовая клавиатура суммы, дата/время (календарь
- * + часы) кнопкой справа от выбора типа, категории из справочника БД
- * с пунктом «Добавить новую» (иконка «+») и собственным диалогом ввода.
+ * Диалог добавления/редактирования записи: числовая клавиатура суммы,
+ * дата/время (календарь + часы) кнопкой справа от выбора типа, категории
+ * из справочника БД с пунктом «Добавить новую» (иконка «+») и собственным
+ * диалогом ввода. `initial != null` — режим редактирования: поля заполнены
+ * значениями записи, заголовок «Поменять», кнопка «Сохранить».
  */
 @Composable
 fun AddDlg(
     currency: Currency,
     categories: List<CategoryEntity>,
+    /** null — добавление; непустая запись — редактирование (2A). */
+    initial: TransactionEntity?,
     onCreateCategory: suspend (String, Boolean) -> Int?,
     dismiss: () -> Unit,
     ok: (Double, Int, String, Boolean, Long) -> Unit
 ) {
     val s = LocalStrings.current
     val scope = rememberCoroutineScope()
-    var amt by remember { mutableStateOf("") }
-    var note by remember { mutableStateOf("") }
-    var inc by remember { mutableStateOf(false) }
-    var catId by remember { mutableStateOf<Int?>(null) }
-    var ts by remember { mutableStateOf(System.currentTimeMillis()) }
+    // Формат начальной суммы: целая — без дробей, иначе 2 знака (locale
+    // — принудительно '.'; парсер фильтра принимает и запятую)
+    var amt by remember {
+        mutableStateOf(initial?.let {
+            if (it.amount % 1.0 == 0.0) it.amount.toLong().toString()
+            else String.format(Locale.US, "%.2f", it.amount)
+        } ?: "")
+    }
+    var note by remember { mutableStateOf(initial?.note ?: "") }
+    var inc by remember { mutableStateOf(initial?.isIncome ?: false) }
+    var catId by remember { mutableStateOf(initial?.categoryId) }
+    var ts by remember { mutableStateOf(initial?.timestamp ?: System.currentTimeMillis()) }
     var showDate by remember { mutableStateOf(false) }
     var showTime by remember { mutableStateOf(false) }
     var newCat by remember { mutableStateOf(false) }
@@ -442,7 +500,7 @@ fun AddDlg(
 
     AlertDialog(
         onDismissRequest = dismiss,
-        title = { Text(if (inc) s.addIncome else s.addExpense) },
+        title = { Text(if (initial != null) s.edit else if (inc) s.addIncome else s.addExpense) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // Тип записи и дата — в ОДНОЙ строке, вписанной в ширину
@@ -542,7 +600,7 @@ fun AddDlg(
                     val c = effectiveCat ?: return@Button
                     ok(a, c, note, inc, ts)
                 }
-            ) { Text(s.add) }
+            ) { Text(if (initial != null) s.save else s.add) }
         },
         dismissButton = { TextButton(onClick = dismiss) { Text(s.cancel) } }
     )

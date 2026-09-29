@@ -35,7 +35,7 @@ abstract class AppDatabase : RoomDatabase() {
         const val DB_NAME = "finance.db"
 
         /** Текущая версия схемы (используется в @Database и записывается в бэкапы). */
-        const val VERSION = 5
+        const val VERSION = 6
 
         /**
          * v1 -> v2: создаёт таблицу статистики и заполняет её суммами
@@ -341,6 +341,28 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_transactions_accountId_currencyCode_timestamp_id` " +
                         "ON `transactions` (`accountId`, `currencyCode`, `timestamp`, `id`)"
+                )
+            }
+        }
+
+        /**
+         * v5 -> v6: индексы для строки фильтров вкладки «Операции» экрана
+         * «Периоды» (фильтр по типу операции isIncome и по categoryId).
+         * Каждый фильтр + keyset по (timestamp, id) обслуживается своим
+         * индексом без скана периода. Имена — ровно те, что генерирует
+         * Room по @Entity v6 (иначе валидация схемы после миграции не
+         * совпадёт и destructive-fallback сотрёт данные).
+         * Данные не меняются: только CREATE INDEX.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_accountId_currencyCode_isIncome_timestamp_id` " +
+                        "ON `transactions` (`accountId`, `currencyCode`, `isIncome`, `timestamp`, `id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_transactions_accountId_currencyCode_categoryId_timestamp_id` " +
+                        "ON `transactions` (`accountId`, `currencyCode`, `categoryId`, `timestamp`, `id`)"
                 )
             }
         }

@@ -13,9 +13,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.Currency
 import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.TransactionEntity
@@ -62,6 +64,9 @@ fun StatsScreen(
     // Подтверждение удаления и просмотр заметки (как на дашборде)
     var toDelete by remember { mutableStateOf<TransactionEntity?>(null) }
     var viewed by remember { mutableStateOf<TransactionEntity?>(null) }
+    // Редактируемая запись (пункт «Поменять» меню) и id открытого меню
+    var edit by remember { mutableStateOf<TransactionEntity?>(null) }
+    var menuFor by remember { mutableStateOf<Long?>(null) }
 
     fun labelFor(id: Int): String = s.cat(st.catNames[id] ?: "")
 
@@ -196,9 +201,86 @@ fun StatsScreen(
                     }
                 }
             } else {
-                // Вкладка «Операции»: записи выбранного периода, keyset-
-                // ленивая подгрузка по 20 (как на дашборде), удаление
-                // через подтверждение. Отдельная загрузка при пустом списке.
+                // Вкладка «Операции»: тонкая строка фильтров, затем
+                // записи выбранного периода (keyset-подгрузка по 20,
+                // как на дашборде), удаление через подтверждение.
+                // Слева — тип операции («Все операции» по умолчанию),
+                // при выбранном Расходы/Доходы справа — фильтр по
+                // категориям этого типа («Все категории» по умолчанию).
+                // Строки фильтров живёт в StatsViewModel (opsType/opsCat).
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    var typeExp by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(
+                            onClick = { typeExp = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                opsTypeLabel(s, st.opsType),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Icon(
+                                Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        DropdownMenu(expanded = typeExp, onDismissRequest = { typeExp = false }) {
+                            DropdownMenuItem(
+                                text = { Text(s.allOps) },
+                                onClick = { vm.setOpsType(-1); typeExp = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(s.expenses) },
+                                onClick = { vm.setOpsType(0); typeExp = false }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(s.income) },
+                                onClick = { vm.setOpsType(1); typeExp = false }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.weight(1f))
+                    if (st.opsType != -1) {
+                        var catExp by remember { mutableStateOf(false) }
+                        Box {
+                            TextButton(
+                                onClick = { catExp = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    opsCatLabel(s, st.cats, st.opsCat),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 160.dp)
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            DropdownMenu(expanded = catExp, onDismissRequest = { catExp = false }) {
+                                DropdownMenuItem(
+                                    text = { Text(s.allCategories) },
+                                    onClick = { vm.setOpsCat(-1); catExp = false }
+                                )
+                                st.cats.filter { it.isIncome == (st.opsType == 1) }.forEach { c ->
+                                    DropdownMenuItem(
+                                        text = { Text(s.cat(c.name)) },
+                                        onClick = { vm.setOpsCat(c.id); catExp = false }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
                 val listState = rememberLazyListState()
                 LaunchedEffect(listState, st.opsHasMore, st.opsLoadingMore) {
                     snapshotFlow {
@@ -255,8 +337,30 @@ fun StatsScreen(
                                             fontWeight = FontWeight.Bold,
                                             color = color
                                         )
-                                        IconButton(onClick = { toDelete = t }) {
-                                            Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error)
+                                        // «Три точки»: меню «Поменять» / «Удалить»
+                                        // (удаление — по-прежнему только через
+                                        // подтверждение, правило AGENTS.md)
+                                        Box {
+                                            IconButton(onClick = { menuFor = t.id }) {
+                                                Icon(
+                                                    Icons.Default.MoreVert,
+                                                    contentDescription = s.menuMore,
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            DropdownMenu(
+                                                expanded = menuFor == t.id,
+                                                onDismissRequest = { menuFor = null }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text(s.edit) },
+                                                    onClick = { edit = t; menuFor = null }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text(s.delete, color = MaterialTheme.colorScheme.error) },
+                                                    onClick = { toDelete = t; menuFor = null }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -312,6 +416,22 @@ fun StatsScreen(
                 Button(onClick = { vm.remove(t); toDelete = null }) { Text(s.delete) }
             },
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text(s.cancel) } }
+        )
+    }
+
+    // Редактирование записи: форма как при создании (AddDlg с initial),
+    // при сохранении — замена текущей записи новыми значениями
+    edit?.let { e ->
+        AddDlg(
+            currency = st.currency,
+            categories = st.cats,
+            initial = e,
+            onCreateCategory = { name, inc -> vm.addCategory(name, inc) },
+            dismiss = { edit = null },
+            ok = { a, c, n, i, t ->
+                vm.edit(e, a, c, n, i, t)
+                edit = null
+            }
         )
     }
 }
@@ -410,3 +530,14 @@ private fun periodLabelChip(s: Strings, p: PeriodType): String =
         PeriodType.YEAR -> s.periodYear
         PeriodType.TOTAL -> ""
     }
+
+/** Подпись фильтра типа операций: sentinel -1 = «Все операции». */
+private fun opsTypeLabel(s: Strings, t: Int): String = when (t) {
+    -1 -> s.allOps
+    0 -> s.expenses
+    else -> s.income
+}
+
+/** Подпись фильтра категорий: sentinel -1 = «Все категории». */
+private fun opsCatLabel(s: Strings, cats: List<CategoryEntity>, id: Int): String =
+    if (id == -1) s.allCategories else s.cat(cats.firstOrNull { it.id == id }?.name ?: "")

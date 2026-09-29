@@ -79,9 +79,9 @@ MainActivity.kt           — @AndroidEntryPoint; единственная Activ
 
 data/
   local/
-    AppDatabase.kt        — @Database v5, DAO-и, MIGRATION_1_2 + … + MIGRATION_4_5
+    AppDatabase.kt        — @Database v6, DAO-и, MIGRATION_1_2 + … + MIGRATION_5_6
     DbHolder.kt           — ленивое открытие зашифрованной БД (см. §5)
-    TransactionDao.kt     — CRUD + keyset-пагинация (по счёту+валюте; за период) + all()/forAccount() для экспорта
+    TransactionDao.kt     — CRUD + keyset-пагинация (по счёту+валюте; за период с фильтрами) + update + all()/forAccount() для экспорта
     StatDao.kt            — инкрементальные суммы (счёт + период + валюта + категория)
     AccountDao.kt         — CRUD справочника счетов (+ deleteAll для импорта-замены)
     CategoryDao.kt        — CRUD справочника категорий (listAll/byName/insert)
@@ -92,7 +92,7 @@ data/
     TransactionEntity.kt  — таблица `transactions` (с accountId + categoryId + индексы)
     StatEntity.kt         — PeriodType (с ключами и shift) + таблица `stats` (см. §7)
   repository/
-    TransactionRepository.kt — бизнес-логика + транзакции + CRUD счетов (см. §6)
+    TransactionRepository.kt — бизнес-логика + add/remove/replace + CRUD счетов (см. §6)
     BackupRepository.kt      — экспорт/импорт всей БД в шифрованный контейнер (см. §12)
     CsvExportRepository.kt   — экспорт истории счёта в Excel-CSV (см. §13)
   security/
@@ -204,9 +204,11 @@ ui/
 `transactions` ([`TransactionEntity`](app/src/main/java/com/example/financetracker/data/model/TransactionEntity.kt)):
 `id` (PK, autoGenerate), `accountId` (Int, NOT NULL), `amount`, `currencyCode`,
 `categoryId` (Int, NOT NULL — ссылка на `categories.id`), `note`, `isIncome`,
-`timestamp`. Индексы `(accountId, currencyCode, id)`, `(categoryId)` и
+`timestamp`. Индексы `(accountId, currencyCode, id)`, `(categoryId)`,
 `(accountId, currencyCode, timestamp, id)` (v5 — keyset-страница периода
-на вкладке «Операции»).
+на вкладке «Операции») и два индекса v6 для строки фильтров этой же
+вкладки: `(accountId, currencyCode, isIncome, timestamp, id)` и
+`(accountId, currencyCode, categoryId, timestamp, id)`.
 
 `categories` ([`CategoryEntity`](app/src/main/java/com/example/financetracker/data/model/CategoryEntity.kt)):
 `id` (PK, autoGenerate), `name` (TEXT — ключ дефолтной категории из карты
@@ -225,7 +227,7 @@ PK = составной `(accountId, periodType, periodKey, currencyCode, catego
 
 ### Миграции
 [`AppDatabase`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt)
-имеет `version = AppDatabase.VERSION` (константа = 5, она же пишется
+имеет `version = AppDatabase.VERSION` (константа = 6, она же пишется
 в заголовок резервных копий):
 - `MIGRATION_1_2` — создаёт `stats` (без `accountId`) и заполняет её
   агрегацией из `transactions` по всем периодам.
@@ -256,13 +258,20 @@ PK = составной `(accountId, periodType, periodKey, currencyCode, catego
      `AggKey`/`CatKey` (Array в HashMap сравнивался бы по ссылке и
      рассыпал дубли).
 
-- `MIGRATION_4_5` ( [`AppDatabase.MIGRATION_4_5`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt:333) ) — только
+- `MIGRATION_4_5` ( [`AppDatabase.MIGRATION_4_5`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt:339) ) — только
   `CREATE INDEX (accountId, currencyCode, timestamp, id)` на `transactions`
   для вкладки «Операции» экрана «Периоды»: keyset-страница по диапазону
   timestamp обслуживается индексом без скана истории. Данные не меняются.
 
+- `MIGRATION_5_6` ( [`AppDatabase.MIGRATION_5_6`](app/src/main/java/com/example/financetracker/data/local/AppDatabase.kt:360) ) — только
+  два `CREATE INDEX` на `transactions`: `(accountId, currencyCode, isIncome, timestamp, id)`
+  и `(accountId, currencyCode, categoryId, timestamp, id)` — для строки
+  фильтров вкладки «Операции» (по типу операции и по категории). Данные не
+  меняются; имена индексов совпадают с генерируемыми Room по `@Entity` v6
+  (иначе валидация схемы после миграции не совпадёт).
+
 `DbHolder.build()` регистрирует все миграции:
-`addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)`
+`addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)`
 плюс `fallbackToDestructiveMigration()` как страховку.
 
 **Правило добавления новой версии схемы:**
@@ -278,13 +287,18 @@ PK = составной `(accountId, periodType, periodKey, currencyCode, catego
 — единственная точка работы с БД из UI-слоя. Все методы принимают `acc`
 (активный `accountId`) как первый параметр:
 - `page(acc, cur, lastId, limit)` — keyset-страница активного счёта и валюты;
-- `periodPage(acc, cur, from, to, lastTs, lastId, limit)` — keyset-страница
+- `periodPage(acc, cur, from, to, inc, cat, lastTs, lastId, limit)` — keyset-страница
   записей за период `[from; to)` по паре `(timestamp, id)` (вкладка «Операции»);
+  фильтры передаются sentinel'ом `-1` (без фильтра): `inc` — тип (-1/0/1),
+  `cat` — `categoryId` или -1;
 - `income/expense(acc, cur)` — читают строку `TOTAL` из `stats` (точечно по PK);
 - `periodIncome/periodExpense(acc, cur, pt, key)` — сумма за конкретный период;
-- `add(t)`/`remove(t)`/`wipe()` — обёрнуты в `db.db().withTransaction { }`
-  (Room из `room-ktx`), внутри которых вставка/удаление транзакции И
-  дельта-обновление `stats` (`applyDelta`) атомарны;
+- `add(t)`/`remove(t)`/`replace(old, new)`/`wipe()` — обёрнуты в `db.db().withTransaction { }`
+  (Room из `room-ktx`), внутри которых вставка/удаление/замена транзакции И
+  дельта-обновление `stats` (`applyDelta`) атомарны; `replace` снимает вклад
+  старой строки (`sign = -1`), выполняет `dao.update(new)` и прибавляет вклад
+  новой (`sign = +1`) — корректно даже при переезде записи в другой период,
+  категорию или тип;
 - `applyDelta(t, sign)` — для каждого `PeriodType` делает `insertIfAbsent`
   (создаёт нулевую строку периода по `accountId` при необходимости) и `addDelta`
   (`UPDATE ... SET income = income + :inc ... WHERE accountId = ...`).
@@ -356,6 +370,9 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
   `accountId` из `SettingsRepository` и выбранной датой записи),
   затем **вставляет запись в начало окна без перечитывания**.
 - `remove(t)` — удаляет, фильтрует из окна, при опустошении окна перечитывает.
+- `replace(old, new)` — `repo.replace` (withTransaction + дельты `stats`),
+  затем **map-замена** строки в окне по id (сортировка окна по id,
+  позиция записи не меняется — без перечитывания БД) + `refreshTotals()`.
 - Все обращения к БД в `try/catch`; ошибка → безопасное пустое состояние.
 
 ### AccountsViewModel
@@ -374,7 +391,10 @@ loadingMore, hasMore) в `StateFlow`. `PAGE_SIZE = 20`.
 признаки: `vm: FinanceViewModel`, `onOpenSettings`, `onOpenAccounts`.
 структура Column:
 1. Карточка баланса — содержит заголовок «Баланс» и кнопку `IconButton`
-   (`ExpandMore`/`ExpandLess`) для сворачивания/разворачивания. Состояние
+   (`ExpandMore`/`ExpandLess`) для сворачивания/разворачивания.
+   Вертикальные внутренние отступы сжаты (10.dp по вертикали, 20.dp
+   горизонтально), зазор между суммой и строкой доход/расход — 4.dp
+   (экономия высоты в обоих состояниях). Состояние
    хранится В FinanceViewModel как `Map<accountId, Boolean>`
    (`balanceExpandedMap`/`toggleBalance`) — переживает
    переходы на Настройки/Статистику/Счёта в рамках сессии, но не сохраняется
@@ -413,7 +433,16 @@ account» / RU «Сменить счёт»). В `actions` — выбор вал�
 Диалоги (в конце тела Composable, поверх Scaffold):
 - `viewed` — просмотр комментария записи по тапу на карточку.
 - `toDelete` — подтверждение удаления (`AlertDialog` с категорией и суммой).
-- `BackHandler` отключён, пока открыт любой диалог или FAB-окно.
+- `edit` — редактирование записи: тот же `AddDlg` с `initial` (поля
+  предзаполнены, заголовок `s.edit` «Поменять», кнопка `s.save`
+  «Сохранить»); сохранение — `vm.replace(old, new)` с неизменными id и
+  валютой.
+- `menuFor` — id записи с открытым меню «три точки» (`Icons.Default.MoreVert`
+  вместо прежней кнопки удаления): `DropdownMenu` с пунктами «Поменять»
+  (`s.edit` → открывает `edit`) и «Удалить» (`s.delete` → открывает
+  `toDelete`). Одна переменная на весь список — открытым может быть
+  только одно меню. Аналогичное меню на карточках вкладки «Операции».
+- `BackHandler` отключён, пока открыт любой диалог, меню или FAB-окно.
 
 **Карточки компактной статистики — кнопки**: каждая (`День/Неделя/Месяц/Год`)
 окружена `Modifier.clickable(role = Role.Button, onClickLabel = s.statsTitle)`
@@ -427,11 +456,15 @@ account» / RU «Сменить счёт»). В `actions` — выбор вал�
 карточки — 6.dp. ripple/onClickLabel добавлены через
 clip+clickable поверх Card.
 
-### 8.1 AddDlg (диалог добавления записи)
+### 8.1 AddDlg (диалог добавления/редактирования записи)
 [`AddDlg`](app/src/main/java/com/example/financetracker/ui/screens/DashboardScreen.kt:388)
 — `AlertDialog` с параметрами `currency`, `categories` (справочник из БД),
-`onCreateCategory(name, isIncome): Int?`, `ok(amount, categoryId, note,
-isIncome, timestamp)`. Внутри:
+`initial: TransactionEntity?`, `onCreateCategory(name, isIncome): Int?`,
+`ok(amount, categoryId, note, isIncome, timestamp)`. `initial == null` —
+создание; `initial != null` — редактирование: сумма/заметка/тип/категория/
+дата предзаполнены значениями записи, заголовок `s.edit`, кнопка
+`ok`-подписи `s.save` (вместо `s.add`); вызывается одинаково с дашборда
+(`vm.replace`) и с вкладки «Операции» (`vm.edit`). Внутри:
 - **Сумма**: `OutlinedTextField` с `KeyboardOptions(keyboardType = Decimal)`
   и фильтром ввода (цифры + запятая/точка); парсинг `replace(',', '.')`,
   невалидный ввод подсвечивается `isError`; кнопка «Добавить» неактивна,
@@ -493,27 +526,43 @@ isIncome, timestamp)`. Внутри:
      значением, отсортированы по убыванию; подпись = категория (`s.cat(name)`),
      цвет = `CategoryEntity.colorFor(id)`. Пустой период → `s.noStatsData`.
      Рисование чистым Compose, без сторонних библиотек (офлайн-политика).
-   - **«Операции»**: `LazyColumn` записей выбранного периода (активный счёт
+   - **«Операции»**: над списком — **тонкая строка фильтров** (`Row`):
+     слева `TextButton` + стрелка `Icons.Default.ArrowDropDown` (как
+     выбор валюты на дашборде) открывает `DropdownMenu` типа операции:
+     «Все операции» (`s.allOps`, по умолчанию) / «Расходы» (`s.expenses`) /
+     «Доходы» (`s.income`); при выбранном типе справа появляется второй
+     `DropdownMenu` категорий этого типа — «Все категории»
+     (`s.allCategories`) + `st.cats.filter { it.isIncome == … }`. Значения
+     живут в `StatsState.opsType/opsCat` (sentinel `-1` = без фильтра);
+     смена — сброс окна + `loadOps(reset = true)`. Затем `LazyColumn`
+     записей выбранного периода (активный счёт
      + валюта) с keyset-ленивой подгрузкой по 20 (как дашборд):
      `snapshotFlow` по `LazyListState` триггерит `vm.loadOpsMore()` за
      3 элемента до конца; карточка — категория, дата `dd.MM HH:mm`, сумма
-     со знаком, кнопка удаления; тап по карточке — диалог заметки (`viewed`).
+     со знаком, кнопка «три точки» (меню «Поменять»/«Удалить», как на
+     дашборде); тап по карточке — диалог заметки (`viewed`).
      Удаление — подтверждение `AlertDialog` (`toDelete`, категория+сумма) →
      `vm.remove(t)`: `repo.remove` (транзакция + дельта `stats`), изъятие
      из окна с дозагрузкой от курсора, затем `loadBars()` — графики и итоги
-     перечитываются из `stats`. Пустой период → `s.noStatsData`.
+     перечитываются из `stats`. «Поменять» — `AddDlg(initial = t)`,
+     сохранение → `vm.edit(...)` (см. §8.3). Пустой период → `s.noStatsData`.
 
 ### 8.3 Прочие ViewModel
 [`StatsViewModel`](app/src/main/java/com/example/financetracker/ui/viewmodel/StatsViewModel.kt:78)
 — `state: StateFlow<StatsState>` (type, key, minKey, maxKey, currency,
 expenseBars, incomeBars, totalExpense, totalIncome, loading, empty,
-tab, catNames, ops, opsLoaded/opsLoading/opsLoadingMore/opsHasMore,
-opsCursorTs/opsCursorId). Валюта и тип периода активны те же, что на
+tab, catNames, cats, opsType/opsCat (фильтры «Операций», `-1` = все),
+ops, opsLoaded/opsLoading/opsLoadingMore/opsHasMore,
+opsCursorTs/opsCursorId). `setOpsType`/`setOpsCat` — сброс окна и
+`loadOps(reset = true)` (смена типа также сбрасывает фильтр категории на
+«Все категории»); `edit(old, ...)` — `repo.replace` + `loadOps(reset = true)`
++ `loadBars()`; `addCategory` — обновление `cats`/`catNames` (для фильтра и
+формы редактирования). Валюта и тип периода активны те же, что на
 дашборде — приходят навигационными аргументами
 `stats/{currency}/{periodType}` из `SavedStateHandle` (`periodType` —
 имя константы `PeriodType`, парсится `valueOf` с фолбэком на DAY).
 `setType`/`shift` синхронно сбрасывают окно операций (новый период —
-новый список); `loadOps` читает `repo.periodPage` для диапазона
+новый список); `loadOps` читает `repo.periodPage` (с `opsType`/`opsCat`) для диапазона
 `[начало; начало следующего)` периода (`periodRange()` через
 `startDateOf`/`shift` в системной зоне); курсор keyset — последняя
 загруженная пара (timestamp, id). Все обращения к БД в `try/catch`
@@ -750,6 +799,12 @@ Snackbar с числом записей; типы ошибок различаю�
   сбрасывается только при `reset` (смена типа/периода). `catNames`
   (id → имя) подгружается вместе с графиками в `loadBars()`, поэтому
   вкладка корректна и при первом переходе на неё.
+- **Редактирование записи на «Операциях» перезагружает страницу с нуля.**
+  Окно сортировано по `timestamp` и фильтровано (`opsType`/`opsCat`) —
+  после `vm.edit` запись могла сместиться относительно сортировки или
+  выпасть из фильтрованной выборки, поэтому map-замена в окне некорректна;
+  `loadOps(reset = true)` всегда даёт консистентный список. На дашборде
+  (окно по `id`, без фильтра) вместо этого — map-замена без перечитывания.
 - **Цвет счёта из БД конвертировать только через `Color(Long.toInt())`**, а не
   `Color(long.toULong())`. `AccountEntity.color` хранит `0xAARRGGBB` как `Long`;
   первичный value-конструктор `Color(ULong)` трактует число как внутреннее

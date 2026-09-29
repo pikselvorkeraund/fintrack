@@ -8,7 +8,7 @@ plugins {
 
 // Единый источник имени версии: используется в defaultConfig и для
 // переименования APK (fintrack-v<versionName>.apk вместо app-release.apk)
-val appVersionName = "1.4.2"
+val appVersionName = "1.5.0"
 
 android {
     namespace = "com.example.financetracker"
@@ -17,7 +17,7 @@ android {
         applicationId = "com.example.financetracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
+        versionCode = 10
         versionName = appVersionName
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         vectorDrawables { useSupportLibrary = true }
