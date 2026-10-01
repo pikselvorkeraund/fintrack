@@ -560,7 +560,7 @@ fun AddDlg(
                         )
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            SimpleDateFormat("dd.MM\\nHH:mm", Locale.getDefault()).format(Date(ts)),
+                            SimpleDateFormat("dd.MM\nHH:mm", Locale.getDefault()).format(Date(ts)),
                             style = MaterialTheme.typography.labelSmall,
                             textAlign = TextAlign.Center,
                             maxLines = 2
