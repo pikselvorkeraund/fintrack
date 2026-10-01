@@ -517,14 +517,12 @@ fun AddDlg(
                             onClick = { inc = false },
                             shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
                             colors = SegmentedButtonDefaults.colors(
-                                containerColor = ExpenseInactiveBg,
+                                inactiveContainerColor = ExpenseInactiveBg,
+                                inactiveContentColor = MaterialTheme.colorScheme.onSurface,
+                                inactiveBorderColor = MaterialTheme.colorScheme.outline,
                                 activeContainerColor = ExpenseActiveBg,
                                 activeContentColor = Color.White,
-                                contentColor = MaterialTheme.colorScheme.onSurface
-                            ),
-                            border = BorderStroke(
-                                width = if (!inc) 2.dp else 1.dp,
-                                color = if (!inc) ExpenseActiveBorder else MaterialTheme.colorScheme.outline
+                                activeBorderColor = ExpenseActiveBorder
                             )
                         ) {
                             Text(s.expenseChip, style = MaterialTheme.typography.labelSmall)
@@ -534,14 +532,12 @@ fun AddDlg(
                             onClick = { inc = true },
                             shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                             colors = SegmentedButtonDefaults.colors(
-                                containerColor = IncomeInactiveBg,
+                                inactiveContainerColor = IncomeInactiveBg,
+                                inactiveContentColor = MaterialTheme.colorScheme.onSurface,
+                                inactiveBorderColor = MaterialTheme.colorScheme.outline,
                                 activeContainerColor = IncomeActiveBg,
                                 activeContentColor = Color.White,
-                                contentColor = MaterialTheme.colorScheme.onSurface
-                            ),
-                            border = BorderStroke(
-                                width = if (inc) 2.dp else 1.dp,
-                                color = if (inc) IncomeActiveBorder else MaterialTheme.colorScheme.outline
+                                activeBorderColor = IncomeActiveBorder
                             )
                         ) {
                             Text(s.incomeChip, style = MaterialTheme.typography.labelSmall)
