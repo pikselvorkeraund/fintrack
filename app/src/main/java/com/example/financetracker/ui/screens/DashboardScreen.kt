@@ -504,30 +504,53 @@ fun AddDlg(
         title = { Text(if (initial != null) s.edit else if (inc) s.addIncome else s.addExpense) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Тип записи и дата — в ОДНОЙ строке, вписанной в ширину
-                // диалога: чипы и кнопка даты на labelSmall, у кнопки
-                // уменьшены внутренние отступы и иконка, текст в две строки
-                // по центру, слева — минимальный зазор 8.dp
+                // Тип записи: сегментированный переключатель Расход/Доход
+                // (как в StatsScreen) + кнопка даты/времени справа.
+                // Активная кнопка: Расход — красный, Доход — зелёный.
                 Row(
                     Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
-                        !inc,
-                        { inc = false },
-                        { Text(s.expenseChip, style = MaterialTheme.typography.labelSmall) }
-                    )
-                    Spacer(Modifier.width(4.dp))
-                    FilterChip(
-                        inc,
-                        { inc = true },
-                        { Text(s.incomeChip, style = MaterialTheme.typography.labelSmall) }
-                    )
-                    Spacer(Modifier.weight(1f))
+                    SingleChoiceSegmentedButtonRow(Modifier.weight(1f)) {
+                        SegmentedButton(
+                            selected = !inc,
+                            onClick = { inc = false },
+                            shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                            colors = SegmentedButtonDefaults.colors(
+                                containerColor = ExpenseInactiveBg,
+                                activeContainerColor = ExpenseActiveBg,
+                                activeContentColor = Color.White,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            border = BorderStroke(
+                                width = if (!inc) 2.dp else 1.dp,
+                                color = if (!inc) ExpenseActiveBorder else MaterialTheme.colorScheme.outline
+                            )
+                        ) {
+                            Text(s.expenseChip, style = MaterialTheme.typography.labelSmall)
+                        }
+                        SegmentedButton(
+                            selected = inc,
+                            onClick = { inc = true },
+                            shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                            colors = SegmentedButtonDefaults.colors(
+                                containerColor = IncomeInactiveBg,
+                                activeContainerColor = IncomeActiveBg,
+                                activeContentColor = Color.White,
+                                contentColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            border = BorderStroke(
+                                width = if (inc) 2.dp else 1.dp,
+                                color = if (inc) IncomeActiveBorder else MaterialTheme.colorScheme.outline
+                            )
+                        ) {
+                            Text(s.incomeChip, style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
                     // Текущие дата и время записи — кнопка, открывающая пикеры
                     FilledTonalButton(
                         onClick = { showDate = true },
-                        modifier = Modifier.padding(start = 8.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(
@@ -709,6 +732,12 @@ private fun compact(v: Double): String {
 }
 
 private val IncomeGreen = Color(0xFF81C784)
+private val IncomeActiveBg   = Color(0xFF81C784)   // ярко-зелёный фон активной
+private val IncomeActiveBorder = Color(0xFF43A047)   // ярко-зелёный обводка
+private val IncomeInactiveBg  = Color(0x3381C784)   // полупрозрачный зелёный неактив
+private val ExpenseActiveBg   = Color(0xFFEF5350)   // ярко-красный фон активной
+private val ExpenseActiveBorder = Color(0xFFC62828) // ярко-красный обводка
+private val ExpenseInactiveBg  = Color(0x33EF5350) // полупрозрачный красный неактив
 
 /**
  * @param sign  префикс (+/−/пустая)
