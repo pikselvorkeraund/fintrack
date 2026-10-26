@@ -62,11 +62,35 @@ interface StatDao {
 
     @Query("DELETE FROM stats")
     suspend fun deleteAll()
+
+    /**
+     * Все валюты счёта (TOTAL по всем категориям), с суммированными
+     * доходом/расходом за всё время. Возвращает НЕПУСТОЙ список только
+     * для валют, по которым есть ненулевые строки в таблице stats.
+     * categoryId = 0 — агрегирующая строка (SUM по всем категориям),
+     * periodType = TOTAL, periodKey = ''.
+     */
+    @Query(
+        "SELECT currencyCode, COALESCE(SUM(income), 0) AS income, COALESCE(SUM(expense), 0) AS expense " +
+            "FROM stats " +
+            "WHERE accountId = :acc AND periodType = 'TOTAL' AND periodKey = '' AND categoryId = 0 " +
+            "AND (income <> 0 OR expense <> 0) " +
+            "GROUP BY currencyCode " +
+            "ORDER BY (income + expense) DESC"
+    )
+    suspend fun totalsByCurrency(acc: Int): List<CurrencyTotalRow>
 }
 
 /** Плоская строка разбивки статистики по категории (для экрана статистики). */
 data class CategorySum(
     val categoryId: Int,
+    val income: Double,
+    val expense: Double
+)
+
+/** Строка сводной статистики по валюте: валюта + суммарные доход/расход за всё время. */
+data class CurrencyTotalRow(
+    val currencyCode: String,
     val income: Double,
     val expense: Double
 )

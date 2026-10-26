@@ -2,6 +2,7 @@ package com.example.financetracker.data.repository
 
 import androidx.room.withTransaction
 import com.example.financetracker.data.local.CategorySum
+import com.example.financetracker.data.local.CurrencyTotalRow
 import com.example.financetracker.data.local.DbHolder
 import com.example.financetracker.data.model.AccountEntity
 import com.example.financetracker.data.model.CategoryEntity
@@ -53,6 +54,14 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
 
     suspend fun periodExpense(acc: Int, cur: String, pt: PeriodType, key: String): Double =
         db.statDao().periodExpense(acc, cur, pt.name, key, StatEntity.AGGREGATE_ID)
+
+    /**
+     * Сводная статистика по ВСЕМ валютам активного счёта: каждая валюта,
+     * по которой есть ненулевые записи, со своим суммарным доходом/расходом
+     * за всё время (TOTAL-строки из таблицы stats, агрегирующая categoryId = 0).
+     */
+    suspend fun currencyTotals(acc: Int): List<CurrencyTotalRow> =
+        db.statDao().totalsByCurrency(acc)
 
     /**
      * Добавление записи и дельта-обновление статистики в одной транзакции.

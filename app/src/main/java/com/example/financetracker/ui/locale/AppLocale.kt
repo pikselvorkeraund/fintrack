@@ -124,6 +124,11 @@ data class Strings(
     val developerSite: String,
     /** Тег языка для java.time-форматирования заголовков периодов ("en"/"ru"). */
     val langCode: String,
+    /** Экран сводной статистики по всем валютам счёта (issue #3). */
+    val allCurrenciesTitle: String,
+    val allCurrenciesEmpty: String,
+    /** Подсказка кнопки-пилюли на дашборде («Валюты»). */
+    val allCurrenciesPill: String,
     val categories: Map<String, String>
 )
 
@@ -249,6 +254,9 @@ val StringsEn = Strings(
     versionLabel = "Version",
     developerSite = "Developer website",
     langCode = "en",
+    allCurrenciesTitle = "All currencies",
+    allCurrenciesEmpty = "No records yet",
+    allCurrenciesPill = "All",
     categories = catsEn
 )
 
@@ -360,6 +368,9 @@ val StringsRu = Strings(
     versionLabel = "Версия",
     developerSite = "Сайт разработчика",
     langCode = "ru",
+    allCurrenciesTitle = "Все валюты",
+    allCurrenciesEmpty = "Пока нет записей",
+    allCurrenciesPill = "Валюты",
     categories = catsRu
 )
 
