@@ -9,6 +9,7 @@ import com.example.financetracker.data.settings.SettingsRepository
 import com.example.financetracker.ui.locale.LocalStrings
 import com.example.financetracker.ui.locale.stringsFor
 import com.example.financetracker.ui.screens.AccountsScreen
+import com.example.financetracker.ui.screens.AllCurrenciesScreen
 import com.example.financetracker.ui.screens.DashboardScreen
 import com.example.financetracker.ui.screens.LockScreen
 import com.example.financetracker.ui.screens.SettingsScreen
@@ -42,7 +43,8 @@ fun AppNavGraph(settings: SettingsRepository) {
                     // карточка ведёт на свой период (не всегда DAY)
                     onOpenStats = { pt ->
                         nav.navigate("stats/${financeVm.currency.value.code}/${pt.name}")
-                    }
+                    },
+                    onOpenAllCurrencies = { nav.navigate("allCurrencies") }
                 )
             }
             composable("stats/{currency}/{periodType}") {
@@ -62,6 +64,9 @@ fun AppNavGraph(settings: SettingsRepository) {
                     onDataChanged = { financeVm.reload() },
                     onBack = { nav.popBackStack() }
                 )
+            }
+            composable("allCurrencies") {
+                AllCurrenciesScreen(onBack = { nav.popBackStack() })
             }
         }
     }

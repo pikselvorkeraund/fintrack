@@ -64,7 +64,8 @@ fun DashboardScreen(
     vm: FinanceViewModel = hiltViewModel(),
     onOpenSettings: () -> Unit,
     onOpenAccounts: () -> Unit,
-    onOpenStats: (PeriodType) -> Unit
+    onOpenStats: (PeriodType) -> Unit,
+    onOpenAllCurrencies: () -> Unit = {}
 ) {
     val s = LocalStrings.current
     val ui by vm.ui.collectAsState()
@@ -195,10 +196,29 @@ fun DashboardScreen(
                 Column(Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(s.balance, style = MaterialTheme.typography.bodyMedium)
+                        Spacer(Modifier.width(8.dp))
+                        // Кнопка-пилюля «Валюты» (issue #3): сводная
+                        // статистика по всем валютам активного счёта.
+                        Button(
+                            onClick = { onOpenAllCurrencies() },
+                            shape = RoundedCornerShape(50),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            modifier = Modifier.height(20.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Text(
+                                s.allCurrenciesPill,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1
+                            )
+                        }
+                        Spacer(Modifier.weight(1f))
                         IconButton(onClick = { vm.toggleBalance(acc?.id ?: 0) }) {
                             Icon(
                                 if (balanceExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
