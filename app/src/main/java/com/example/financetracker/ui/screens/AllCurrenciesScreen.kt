@@ -42,7 +42,7 @@ import com.example.financetracker.ui.viewmodel.AllCurrenciesViewModel
 import com.example.financetracker.ui.viewmodel.CurrencyStat
 
 /** Форматирование суммы валюты в компактном виде (символ + число). */
-private fun fmt(v: Double, c: com.example.financetracker.data.model.Currency): String =
+private fun fmtCurrency(v: Double, c: com.example.financetracker.data.model.Currency): String =
     "${c.symbol} ${
         java.text.NumberFormat.getNumberInstance(
             if (c.code == "RUB") java.util.Locale.forLanguageTag("ru")
@@ -149,7 +149,7 @@ private fun CurrencyCard(stat: CurrencyStat) {
                     )
                 }
                 Text(
-                    fmt(stat.balance, c),
+                    fmtCurrency(stat.balance, c),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = if (stat.balance >= 0) Color(0xFF81C784) else Color(0xFFEF5350)
@@ -168,7 +168,7 @@ private fun CurrencyCard(stat: CurrencyStat) {
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        fmt(stat.income, c),
+                        fmtCurrency(stat.income, c),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF81C784)
@@ -182,7 +182,7 @@ private fun CurrencyCard(stat: CurrencyStat) {
                     )
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        fmt(stat.expense, c),
+                        fmtCurrency(stat.expense, c),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFFEF5350)
