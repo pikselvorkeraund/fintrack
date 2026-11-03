@@ -256,7 +256,7 @@ val StringsEn = Strings(
     langCode = "en",
     allCurrenciesTitle = "All currencies",
     allCurrenciesEmpty = "No records yet",
-    allCurrenciesPill = "All",
+    allCurrenciesPill = "All currencies",
     categories = catsEn
 )
 
@@ -370,7 +370,7 @@ val StringsRu = Strings(
     langCode = "ru",
     allCurrenciesTitle = "Все валюты",
     allCurrenciesEmpty = "Пока нет записей",
-    allCurrenciesPill = "Валюты",
+    allCurrenciesPill = "Все валюты",
     categories = catsRu
 )
 

@@ -205,17 +205,23 @@ fun DashboardScreen(
                         Button(
                             onClick = { onOpenAllCurrencies() },
                             shape = RoundedCornerShape(50),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                            contentPadding = PaddingValues(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
                             modifier = Modifier.height(20.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onPrimary
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurface
                             )
                         ) {
                             Text(
                                 s.allCurrenciesPill,
                                 style = MaterialTheme.typography.labelSmall,
                                 maxLines = 1
+                            )
+                            Spacer(Modifier.width(2.dp))
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
                             )
                         }
                         Spacer(Modifier.weight(1f))
