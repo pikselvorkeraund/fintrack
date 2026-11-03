@@ -206,7 +206,7 @@ fun DashboardScreen(
                             onClick = { onOpenAllCurrencies() },
                             shape = RoundedCornerShape(50),
                             contentPadding = PaddingValues(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
-                            modifier = Modifier.height(20.dp),
+                            modifier = Modifier.height(20.dp).border(1.dp, Color.Black, RoundedCornerShape(50)),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 contentColor = MaterialTheme.colorScheme.onSurface
