@@ -454,13 +454,14 @@ class StatsViewModel @Inject constructor(
                 // точечное чтение агрегирующей DAY-строки; подпись —
                 // локализованный день недели.
                 val monday = pt.startDateOf(key)
+                val fDay = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                val fWd = java.time.format.DateTimeFormatter.ofPattern("EEE", loc)
                 (0L until 7L).map { off ->
                     val day = monday.plusDays(off)
-                    val dayKey = day.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    val dayKey = day.format(fDay)
                     val exp = runCatching { repo.periodExpense(acc, curCode, PeriodType.DAY, dayKey) }.getOrDefault(0.0)
                     val inc = runCatching { repo.periodIncome(acc, curCode, PeriodType.DAY, dayKey) }.getOrDefault(0.0)
-                    val label = runCatching { day.format(java.time.format.DateTimeFormatter.ofPattern("EEE", loc)) }
-                        .getOrDefault(dayKey)
+                    val label = runCatching { day.format(fWd) }.getOrDefault(dayKey)
                     SummaryItem(dayKey, label, exp, inc)
                 }
             }
@@ -511,13 +512,12 @@ class StatsViewModel @Inject constructor(
                 // 12 месяцев года. Для каждого — точечное чтение агрегирующей
                 // MONTH-строки; подпись — локализованное название месяца.
                 val y = key.toInt()
+                val fMon = java.time.format.DateTimeFormatter.ofPattern("MMM", loc)
                 (1..12).map { m ->
                     val mKey = String.format("%d-%02d", y, m)
                     val exp = runCatching { repo.periodExpense(acc, curCode, PeriodType.MONTH, mKey) }.getOrDefault(0.0)
                     val inc = runCatching { repo.periodIncome(acc, curCode, PeriodType.MONTH, mKey) }.getOrDefault(0.0)
-                    val label = runCatching {
-                        java.time.LocalDate.of(y, m, 1).format(java.time.format.DateTimeFormatter.ofPattern("MMM", loc))
-                    }.getOrDefault(mKey)
+                    val label = runCatching { java.time.LocalDate.of(y, m, 1).format(fMon) }.getOrDefault(mKey)
                     SummaryItem(mKey, label, exp, inc)
                 }
             }
