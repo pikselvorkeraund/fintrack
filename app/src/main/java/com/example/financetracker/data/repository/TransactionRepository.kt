@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import com.example.financetracker.data.local.CategorySum
 import com.example.financetracker.data.local.CurrencyTotalRow
 import com.example.financetracker.data.local.DbHolder
+import com.example.financetracker.data.local.PeriodSumRow
 import com.example.financetracker.data.model.AccountEntity
 import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.PeriodType
@@ -145,6 +146,18 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
     /** Разбивка сумм по категориям за конкретный период (для бар-чартов). */
     suspend fun periodByCategory(acc: Int, cur: String, pt: PeriodType, key: String): List<CategorySum> =
         db.statDao().periodByCategory(acc, cur, pt.name, key)
+
+    /**
+     * Сводные суммы (доход/расход по ВСЕМ категориям, агрегирующая строка
+     * categoryId = 0) за диапазон ключей периодов :fromKey..:toKey
+     * (ключи DAY/MONTH сортируются по лексикографическому порядку =
+     * по хронологии). Возвращает по одной строке на каждый periodKey,
+     * для которого есть непустая агрегирующая строка. Для блока сводной
+     * статистики на экране «Периоды» (день внутри недели, месяц внутри
+     * года) — без скана transакций.
+     */
+    suspend fun periodAggregatesInRange(acc: Int, cur: String, pt: PeriodType, fromKey: String, toKey: String): List<PeriodSumRow> =
+        db.statDao().rangeAggregates(acc, cur, pt.name, fromKey, toKey)
 
     // ---------- Счета ----------
 

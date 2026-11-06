@@ -57,6 +57,26 @@ interface StatDao {
     )
     suspend fun periodByCategory(acc: Int, cur: String, pt: String, pk: String): List<CategorySum>
 
+    /**
+     * Сводные суммы (доход/расход по ВСЕМ категориям, агрегирующая строка
+     * categoryId = 0) за диапазон ключей периодов в формате
+     * periodType = :pt. Диапазон periodKey по лексикографическому порядку
+     * [fromKey; toKey] (ключи periodType DAY/MONTH сортируются как даты).
+     * Группируется по periodKey, поэтому результат — по одному элементу на
+     * конкретный периодKey внутри диапазона. Используется на экране
+     * «Периоды» для блока сводной статистики по диапазону (напр., дни
+     * внутри недели или месяцы внутри года), без скана transакций.
+     */
+    @Query(
+        "SELECT periodKey, COALESCE(SUM(income), 0) AS income, COALESCE(SUM(expense), 0) AS expense " +
+            "FROM stats " +
+            "WHERE accountId = :acc AND currencyCode = :cur AND periodType = :pt AND categoryId = 0 " +
+            "AND periodKey >= :fromKey AND periodKey <= :toKey AND (income <> 0 OR expense <> 0) " +
+            "GROUP BY periodKey " +
+            "ORDER BY periodKey"
+    )
+    suspend fun rangeAggregates(acc: Int, cur: String, pt: String, fromKey: String, toKey: String): List<PeriodSumRow>
+
     @Query("DELETE FROM stats WHERE accountId = :acc")
     suspend fun deleteByAccount(acc: Int)
 
@@ -84,6 +104,13 @@ interface StatDao {
 /** Плоская строка разбивки статистики по категории (для экрана статистики). */
 data class CategorySum(
     val categoryId: Int,
+    val income: Double,
+    val expense: Double
+)
+
+/** Сводная строка: агрегированные доход/расход по ВСЕМ категориям за один периодKey. */
+data class PeriodSumRow(
+    val periodKey: String,
     val income: Double,
     val expense: Double
 )
