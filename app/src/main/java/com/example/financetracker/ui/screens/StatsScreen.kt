@@ -39,6 +39,7 @@ import com.example.financetracker.ui.locale.periodTitle
 import com.example.financetracker.ui.viewmodel.BarItem
 import com.example.financetracker.ui.viewmodel.StatsTab
 import com.example.financetracker.ui.viewmodel.StatsViewModel
+import com.example.financetracker.ui.viewmodel.SummaryItem
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -181,6 +182,14 @@ fun StatsScreen(
                         }
                     } else {
                         Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Блок сводных расходов/доходов по под-периодам (issue #4)
+                            if (st.summaryItems.isNotEmpty()) {
+                                SummaryStatsCard(
+                                    s = s,
+                                    items = st.summaryItems,
+                                    currencySymbol = st.currency.symbol
+                                )
+                            }
                             BarChartCard(
                                 s = s,
                                 title = s.expenses,
@@ -530,6 +539,113 @@ private fun periodLabelChip(s: Strings, p: PeriodType): String =
         PeriodType.YEAR -> s.periodYear
         PeriodType.TOTAL -> ""
     }
+
+/**
+ * Блок сводных расходов/доходов по под-периодам (issue #4). Вставляется
+ * Сверху над бар-чартами по категориям на вкладке «Статистика» экрана
+ * «Периоды». Для каждого слота (день недели / месяц / календарный блок
+ * недель внутри месяца / отдельный день) — строка-заголовок с названием
+ * и суммами (расход красным, доход зелёным) + 2 горизонтальные полосы в
+ * том же визуальном стиле, что у статистики по категориям.
+ */
+@Composable
+private fun SummaryStatsCard(
+    s: Strings,
+    items: List<SummaryItem>,
+    currencySymbol: String
+) {
+    Card(
+        Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            // Заголовок карточки: «Расходы / Доходы» без агрегированного
+            // общего итога (сумма по под-периодам = периоду уже показана
+            // в верхних карточках BarChartCard).
+            Text(
+                s.statsTitle,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.height(6.dp))
+            if (items.isEmpty()) {
+                Text(
+                    "—",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                return@Card
+            }
+            // Нормировка полос: максим из всех сумм (расход/доход) в блоке.
+            val max = items.maxOf { (it.expense).coerceAtLeast(it.income) }.coerceAtLeast(1.0)
+            items.forEach { it ->
+                Spacer(Modifier.height(6.dp))
+                // Строка 1: подпись слота слева + расход/доход справа
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        it.slotLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "-" + String.format("%,.0f", it.expense) + " " + currencySymbol,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            "+" + String.format("%,.0f", it.income) + " " + currencySymbol,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = StatsGreen,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                // Строка 2: две полосы близко друг к другу (расход → доход)
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 3.dp)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth((it.expense / max).toFloat().coerceIn(0.02f, 1f))
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(MaterialTheme.colorScheme.error)
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp)
+                        .height(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth((it.income / max).toFloat().coerceIn(0.02f, 1f))
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(5.dp))
+                            .background(StatsGreen)
+                    )
+                }
+            }
+        }
+    }
+}
 
 /** Подпись фильтра типа операций: sentinel -1 = «Все операции». */
 private fun opsTypeLabel(s: Strings, t: Int): String = when (t) {
