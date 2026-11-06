@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
 
 /** Один столбик бар-чарта: категория, подписью и цвет из справочника. */
@@ -471,7 +472,7 @@ class StatsViewModel @Inject constructor(
                 // читаются одним диапазоном агрегирующих DAY-строк (без
                 // скана транзакций), затем группируются по 7-дневным блокам.
                 val first = pt.startDateOf(key)
-                val last = first.with(java.time.temporal.TemporalAdjusters.endOfMonth())
+                val last = first.with(TemporalAdjusters.endOfMonth())
                 val from = first.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                 val to = last.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
                 val rows = runCatching { repo.periodAggregatesInRange(acc, curCode, PeriodType.DAY, from, to) }
