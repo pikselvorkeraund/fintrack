@@ -9,12 +9,14 @@ import com.example.financetracker.data.model.PeriodType
 import com.example.financetracker.data.model.TransactionEntity
 import com.example.financetracker.data.repository.TransactionRepository
 import com.example.financetracker.data.settings.SettingsRepository
+import com.example.financetracker.ui.locale.Language
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 
@@ -24,6 +26,22 @@ data class BarItem(
     val label: String,
     val value: Double,
     val color: Long
+)
+
+/**
+ * Строка сводной статистики по под-периоду (issue #4): подпись + сводные
+ * доход/расход по ВСЕМ категориям (агрегирующая строка categoryId = 0).
+ * Используется на экране «Периоды» в блоке сводных расходов/доходов,
+ * вставляемом над бар-чартами по категориям.
+ * `slotLabel` — человекочитаемая подпись слота (день недели, месяц, дата,
+ * диапазон дат внутри месяца), вычисляется по текущему языку.
+ * `slotKey` — исходный ключ под-периода (DAY/MONTH), для отладки/стабильности.
+ */
+data class SummaryItem(
+    val slotKey: String,
+    val slotLabel: String,
+    val expense: Double,
+    val income: Double
 )
 
 /** Вкладки экрана «Периоды»: графики по категориям / список операций. */
@@ -38,6 +56,8 @@ data class StatsState(
     val currency: Currency = Currency.RUB,
     val expenseBars: List<BarItem> = emptyList(),
     val incomeBars: List<BarItem> = emptyList(),
+    /** Сводные строки расходов/доходов по под-периодам (issue #4). */
+    val summaryItems: List<SummaryItem> = emptyList(),
     val totalExpense: Double = 0.0,
     val totalIncome: Double = 0.0,
     val loading: Boolean = false,
@@ -94,6 +114,9 @@ class StatsViewModel @Inject constructor(
     private val curCode: String =
         Currency.fromCode(savedStateHandle.get<String>("currency") ?: Currency.RUB.code).code
 
+    /** Текущий язык (для подписей сводных под-периодов: дни недели, месяцы). */
+    private var lang: Language = settings.lang.value
+
     /** Тип периода из маршрута stats/{currency}/{periodType}. */
     private val initialType: PeriodType = runCatching {
         PeriodType.valueOf(savedStateHandle.get<String>("periodType") ?: PeriodType.DAY.name)
@@ -119,7 +142,7 @@ class StatsViewModel @Inject constructor(
         _state.update {
             it.copy(
                 type = pt, key = "", minKey = null, maxKey = null,
-                expenseBars = emptyList(), incomeBars = emptyList(), loading = true,
+                expenseBars = emptyList(), incomeBars = emptyList(), summaryItems = emptyList(), loading = true,
                 ops = emptyList(), opsLoaded = false, opsLoading = false,
                 opsLoadingMore = false, opsHasMore = false,
                 opsCursorTs = 0, opsCursorId = 0
@@ -292,12 +315,15 @@ class StatsViewModel @Inject constructor(
                     .take(TOP_N)
             val exp = bars { it.expense }
             val inc = bars { it.income }
+            // Сводные строки расходов/доходов по под-периодам (issue #4)
+            val sum = loadSummary(st0.type, st0.key, acc)
             // Если за время запроса изменились тип или ключ — результат устарел
             if (_state.value.type != st0.type || _state.value.key != st0.key) return@launch
             _state.update { s ->
                 s.copy(
                     expenseBars = exp,
                     incomeBars = inc,
+                    summaryItems = sum,
                     totalExpense = totExp,
                     totalIncome = totInc,
                     loading = false,
@@ -397,5 +423,105 @@ class StatsViewModel @Inject constructor(
         val start = pt.startDateOf(key).atStartOfDay(zone).toInstant().toEpochMilli()
         val end = pt.startDateOf(pt.shift(key, 1)).atStartOfDay(zone).toInstant().toEpochMilli()
         return start to end
+    }
+
+    /**
+     * Сводные расходы/доходы по под-периодам (issue #4). Для каждого типа
+     * периода: День → 1 группа, Неделя → 7 дней, Месяц → блоки по 7 дней
+     * (календарные, не ISO), Год → 12 месяцев. Подписи локализуются по
+     * текущему языку приложения (days-of-week / months / dates через
+     * java.time с Locale из `lang`). Суммы берутся из агрегирующей строки
+     * (categoryId = 0) по ключам DAY/MONTH: точечные чтения periodExpense /
+     * periodIncome для DAY/MONTH + диапазонный запрос periodAggregatesInRange
+     * для блока календарных недель внутри месяца (диапазоны дней, не
+     * совпадающие с ISO-неделями).
+     */
+    private suspend fun loadSummary(pt: PeriodType, key: String, acc: Int): List<SummaryItem> {
+        if (key.isEmpty()) return emptyList()
+        val loc = java.util.Locale(if (lang == Language.RU) "ru" else "en")
+        return when (pt) {
+            PeriodType.DAY -> {
+                val exp = runCatching { repo.periodExpense(acc, curCode, pt, key) }.getOrDefault(0.0)
+                val inc = runCatching { repo.periodIncome(acc, curCode, pt, key) }.getOrDefault(0.0)
+                val label = runCatching {
+                    java.time.LocalDate.parse(key, java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                        .format(java.time.format.DateTimeFormatter.ofPattern("d MMM", loc))
+                }.getOrDefault(key)
+                listOf(SummaryItem(key, label, exp, inc))
+            }
+            PeriodType.WEEK -> {
+                // 7 дней недели (Mon..Sun по ISO-неделе). Для каждого дня —
+                // точечное чтение агрегирующей DAY-строки; подпись —
+                // локализованный день недели.
+                val monday = pt.startDateOf(key)
+                val fDay = java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                val fWd = java.time.format.DateTimeFormatter.ofPattern("EEE", loc)
+                (0L until 7L).map { off ->
+                    val day = monday.plusDays(off)
+                    val dayKey = day.format(fDay)
+                    val exp = runCatching { repo.periodExpense(acc, curCode, PeriodType.DAY, dayKey) }.getOrDefault(0.0)
+                    val inc = runCatching { repo.periodIncome(acc, curCode, PeriodType.DAY, dayKey) }.getOrDefault(0.0)
+                    val label = runCatching { day.format(fWd) }.getOrDefault(dayKey)
+                    SummaryItem(dayKey, label, exp, inc)
+                }
+            }
+            PeriodType.MONTH -> {
+                // Блоки календарных дней по 7 дней внутри месяца: 1–7, 8–14,
+                // 15–21, 22–28, и остаток 29..lastDay. Все дни месяца
+                // читаются одним диапазоном агрегирующих DAY-строк (без
+                // скана транзакций), затем группируются по 7-дневным блокам.
+                val first = pt.startDateOf(key)
+                val last = first.with(java.time.temporal.TemporalAdjusters.endOfMonth())
+                val from = first.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                val to = last.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                val rows = runCatching { repo.periodAggregatesInRange(acc, curCode, PeriodType.DAY, from, to) }
+                    .getOrElse { emptyList() }
+                val byKey = rows.associateBy { it.periodKey }
+                // Блоки: [1..7], [8..14], [15..21], [22..28], [29..last]
+                val daysInMonth = last.dayOfMonth
+                val blocks = mutableListOf<Pair<java.time.LocalDate, java.time.LocalDate>>()
+                var cursor = 1
+                while (cursor <= daysInMonth) {
+                    val endOfBlock = minOf(cursor + 6, daysInMonth)
+                    blocks += first.withDayOfMonth(cursor) to first.withDayOfMonth(endOfBlock)
+                    cursor = endOfBlock + 1
+                }
+                blocks.map { (a, b) ->
+                    val aKey = a.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    val bKey = b.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                    var expSum = 0.0
+                    var incSum = 0.0
+                    var d = a
+                    while (d <= b) {
+                        val k = d.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                        val row = byKey[k]
+                        if (row != null) {
+                            expSum += row.expense
+                            incSum += row.income
+                        }
+                        d = d.plusDays(1)
+                    }
+                    val label = runCatching {
+                        val f = java.time.format.DateTimeFormatter.ofPattern("d", loc)
+                        "${a.format(f)}–${b.format(f)}"
+                    }.getOrDefault("${a.dayOfMonth}–${b.dayOfMonth}")
+                    SummaryItem(bKey, label, expSum, incSum)
+                }
+            }
+            PeriodType.YEAR -> {
+                // 12 месяцев года. Для каждого — точечное чтение агрегирующей
+                // MONTH-строки; подпись — локализованное название месяца.
+                val y = key.toInt()
+                val fMon = java.time.format.DateTimeFormatter.ofPattern("MMM", loc)
+                (1..12).map { m ->
+                    val mKey = String.format("%d-%02d", y, m)
+                    val exp = runCatching { repo.periodExpense(acc, curCode, PeriodType.MONTH, mKey) }.getOrDefault(0.0)
+                    val inc = runCatching { repo.periodIncome(acc, curCode, PeriodType.MONTH, mKey) }.getOrDefault(0.0)
+                    val label = runCatching { java.time.LocalDate.of(y, m, 1).format(fMon) }.getOrDefault(mKey)
+                    SummaryItem(mKey, label, exp, inc)
+                }
+            }
+            else -> emptyList()
+        }
     }
 }
