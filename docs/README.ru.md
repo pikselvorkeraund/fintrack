@@ -1,6 +1,11 @@
 
 # FinTrack — ваши финансы, на вашем устройстве, под вашим контролем
 
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
+![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![GitHub Release](https://img.shields.io/github/v/release/pikselvorkeraund/fintrack?style=for-the-badge&color=blue)
+![Downloads](https://img.shields.io/github/downloads/pikselvorkeraund/fintrack/total?style=for-the-badge&color=brightgreen)
+
 **FinTrack** — полностью офлайн приложение для учёта личных финансов на Android.
 Никакого облака, аккаунтов, рекламы и телеметрии — ваша денежная история живёт
 только на телефоне и защищена шифрованием военного уровня.
