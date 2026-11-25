@@ -76,8 +76,8 @@ filtered per currency.
 ## Get the app
 
 FinTrack is built and signed by **GitHub Actions** — see the
-[Actions tab](https://github.com/pikselvorkeraund/fintrack/actions) of this
-repository for the latest APK artifact. Building and signing options are
+[Latest release](https://github.com/pikselvorkeraund/fintrack/releases/latest) of this
+repository for the latest APK. Building and signing options are
 described in the [developer guide](docs/DEVELOPMENT.md).
 
 ## Documentation
