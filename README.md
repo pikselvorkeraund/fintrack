@@ -15,6 +15,13 @@ protected by military-grade encryption.
 
 ---
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/ft1.jpg" width="230" alt="Main screen" />
+  <img src="docs/screenshots/ft2.jpg" width="230" alt="Statistics page" />
+</p>
+
 ## Why FinTrack
 
 ### 🔐 Security you can actually verify
