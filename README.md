@@ -1,6 +1,12 @@
 
 # FinTrack — your finances, your device, your rules
 
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
+![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![GitHub Release](https://img.shields.io/github/v/release/pikselvorkeraund/fintrack?style=for-the-badge&color=blue)
+![Downloads](https://img.shields.io/github/downloads/pikselvorkeraund/fintrack/total?style=for-the-badge&color=brightgreen)
+
+
 **FinTrack** is a fully offline personal finance tracker for Android. No cloud,
 no accounts, no ads, no telemetry — your money history lives only on your phone,
 protected by military-grade encryption.
