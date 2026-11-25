@@ -10,7 +10,7 @@
 
 **FinTrack** is a fully offline personal finance tracker for Android. No cloud,
 no accounts, no ads, no telemetry — your money history lives only on your phone,
-protected by military-grade encryption with anti-theft protection.
+protected by military-grade encryption with anti-theft protection. Auto white/black theme.
 
 🇷🇺 **[Русская версия](docs/README.ru.md)** · 🛠 **[Developer guide](docs/DEVELOPMENT.md)**
 
