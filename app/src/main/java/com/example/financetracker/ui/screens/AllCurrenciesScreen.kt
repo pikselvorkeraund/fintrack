@@ -34,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +51,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.financetracker.ui.locale.LocalStrings
 import com.example.financetracker.ui.viewmodel.AllCurrenciesViewModel
 import com.example.financetracker.ui.viewmodel.CurrencyStat
+import com.example.financetracker.ui.viewmodel.FinanceViewModel
 import com.example.financetracker.data.model.Currency
 import java.text.NumberFormat
 import java.util.Locale
@@ -80,10 +82,17 @@ private fun fmtBase(v: Double, c: Currency): String =
 @Composable
 fun AllCurrenciesScreen(
     onBack: () -> Unit,
-    vm: AllCurrenciesViewModel = hiltViewModel()
+    vm: AllCurrenciesViewModel = hiltViewModel(),
+    financeVm: FinanceViewModel = hiltViewModel()
 ) {
     val s = LocalStrings.current
     val state by vm.ui.collectAsState()
+    // Основная валюта — из активного счёта (FinanceViewModel)
+    val activeCurrency by financeVm.currency.collectAsState()
+    // Подписываемся на смену основной валюты и пересчитываем
+    LaunchedEffect(activeCurrency) {
+        vm.setBaseCurrency(activeCurrency)
+    }
     // Диалог курса: валюта, для которой редактируем курс (null — диалог закрыт)
     var rateDlgCurrency by remember { mutableStateOf<Currency?>(null) }
 
@@ -153,15 +162,17 @@ fun AllCurrenciesScreen(
         }
     }
 
-    // Диалог ввода/редактирования кросс-курса
+    // Диалог ввода/редактирования кросс-курса (только если основная валюта задана)
     rateDlgCurrency?.let { cur ->
-        RateDialog(
-            from = cur,
-            to = state.baseCurrency ?: return@let,
-            existingRate = state.currencies.firstOrNull { it.currency == cur }?.baseRate,
-            onSave = { rate -> vm.setRate(cur.code, state.baseCurrency!!.code, rate) },
-            onDismiss = { rateDlgCurrency = null }
-        )
+        if (state.baseCurrency != null) {
+            RateDialog(
+                from = cur,
+                to = state.baseCurrency!!,
+                existingRate = state.currencies.firstOrNull { it.currency == cur }?.baseRate,
+                onSave = { rate -> vm.setRate(cur.code, state.baseCurrency!!.code, rate) },
+                onDismiss = { rateDlgCurrency = null }
+            )
+        }
     }
 }
 
