@@ -1,6 +1,11 @@
 
 # FinTrack — ваши финансы, на вашем устройстве, под вашим контролем
 
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0+-7F52FF?style=for-the-badge&logo=kotlin&logoColor=white)
+![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+![GitHub Release](https://img.shields.io/github/v/release/pikselvorkeraund/fintrack?style=for-the-badge&color=blue)
+![Downloads](https://img.shields.io/github/downloads/pikselvorkeraund/fintrack/total?style=for-the-badge&color=brightgreen)
+
 **FinTrack** — полностью офлайн приложение для учёта личных финансов на Android.
 Никакого облака, аккаунтов, рекламы и телеметрии — ваша денежная история живёт
 только на телефоне и защищена шифрованием военного уровня.
@@ -58,18 +63,16 @@ RUB, USD, EUR, CNY, TRY, EGP, AED, THB, PHP, VND, BYN — **11 валют** с �
 ### ✨ Спроектировано, а не просто сделано
 - Jetpack Compose, **Material 3**, тёмная и светлая темы.
 - Полная **русская и английская локализация** — каждая строка в обоих языках.
-- Сворачиваемая карточка баланса, компактные виджеты периодов, календарь и
-  выбор времени для «задним числом» и планирования, безопасные подтверждения
-  удаления.
+- Сворачиваемая карточка баланса (чтобы сосед не подглядывал за вашими цифрами),
+  компактные виджеты периодов, календарь и  выбор времени для «задним числом»
+  и планирования, безопасные подтверждения удаления.
 
 ---
 
 ## Где взять приложение
 
-FinTrack собирается и подписывается через **GitHub Actions** — свежий APK лежит
-в артефактах [вкладки Actions](https://github.com/pikselvorkeraund/fintrack/actions)
-этого репозитория. Настройки сборки и подписи описаны в
-[гайде для разработчиков](DEVELOPMENT.md).
+FinTrack  — свежий APK лежит в [последнем релизе](https://github.com/pikselvorkeraund/fintrack/releases/latest)
+этого репозитория. Настройки сборки и подписи описаны в [гайде для разработчиков](DEVELOPMENT.md).
 
 ## Документация
 
