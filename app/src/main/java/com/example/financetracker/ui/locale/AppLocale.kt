@@ -5,6 +5,7 @@ import com.example.financetracker.data.model.PeriodType
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 
 enum class Language { EN, RU }
 
@@ -129,6 +130,16 @@ data class Strings(
     val allCurrenciesEmpty: String,
     /** Подсказка кнопки-пилюли на дашборде («Валюты»). */
     val allCurrenciesPill: String,
+    /** Подписи и диалог кросс-курсов (issue #5). */
+    val editRate: String,
+    val setRate: String,
+    val rateFromLabel: String,
+    val rateToLabel: String,
+    val rateDialogTitle: (String, String) -> String,
+    val rateExample: (String, Double, String) -> String,
+    val rateUnknown: (String, String) -> String,
+    val totalInBase: (String) -> String,
+    val missingRates: (Int) -> String,
     val categories: Map<String, String>
 )
 
@@ -257,6 +268,15 @@ val StringsEn = Strings(
     allCurrenciesTitle = "All currencies",
     allCurrenciesEmpty = "No records yet",
     allCurrenciesPill = "All currencies",
+    editRate = "Edit rate",
+    setRate = "Set rate",
+    rateFromLabel = "From",
+    rateToLabel = "To",
+    rateDialogTitle = { from, to -> "Rate $from \u2192 $to" },
+    rateExample = { sym, rate, toSym -> "1 $sym = ${String.format(Locale.US, "%.2f", rate)} $toSym" },
+    rateUnknown = { sym, toSym -> "1 $sym = ? $toSym" },
+    totalInBase = { base -> "Total in $base" },
+    missingRates = { n -> "$n without rate" },
     categories = catsEn
 )
 
@@ -371,6 +391,15 @@ val StringsRu = Strings(
     allCurrenciesTitle = "Все валюты",
     allCurrenciesEmpty = "Пока нет записей",
     allCurrenciesPill = "Все валюты",
+    editRate = "Изменить курс",
+    setRate = "Установить курс",
+    rateFromLabel = "Из валюты",
+    rateToLabel = "В валюту",
+    rateDialogTitle = { from, to -> "Курс $from → $to" },
+    rateExample = { sym, rate, toSym -> "1 $sym = $rate $toSym" },
+    rateUnknown = { sym, toSym -> "1 $sym = ? $toSym" },
+    totalInBase = { base -> "Итого в $base" },
+    missingRates = { n -> "Без курса: $n" },
     categories = catsRu
 )
 
