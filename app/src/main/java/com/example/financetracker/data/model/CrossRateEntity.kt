@@ -10,11 +10,9 @@ import androidx.room.Entity
  *
  * Единая таблица для всех счетов (глобальная, не привязана к accountId).
  */
-@Entity(tableName = "cross_rates")
+@Entity(tableName = "cross_rates", primaryKeys = ["fromCode", "toCode"])
 data class CrossRateEntity(
-    @androidx.room.PrimaryKey
     val fromCode: String,
-    @androidx.room.PrimaryKey
     val toCode: String,
     val rate: Double
 )
