@@ -94,6 +94,8 @@ class DbHolder @Inject constructor(
 
     fun categoryDao(): CategoryDao = db().categoryDao()
 
+    fun crossRateDao(): CrossRateDao = db().crossRateDao()
+
     /** Публичная контрольная точка для диагностики (пишет в файл). */
     fun checkpoint(tag: String) = CrashLog.mark(ctx, tag)
 
