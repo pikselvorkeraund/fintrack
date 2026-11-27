@@ -17,7 +17,7 @@ android {
         applicationId = "com.example.financetracker"
         minSdk = 26
         targetSdk = 35
-versionCode = 15
+versionCode = 16
         versionName = appVersionName
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         vectorDrawables { useSupportLibrary = true }

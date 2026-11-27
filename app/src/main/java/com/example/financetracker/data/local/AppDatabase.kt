@@ -6,6 +6,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.financetracker.data.model.AccountEntity
 import com.example.financetracker.data.model.CategoryEntity
 import com.example.financetracker.data.model.PeriodType
+import com.example.financetracker.data.model.CrossRateEntity
 import com.example.financetracker.data.model.StatEntity
 import com.example.financetracker.data.model.TransactionEntity
 
@@ -20,7 +21,8 @@ private data class CatKey(val acc: Int, val pt: String, val pk: String, val cur:
         TransactionEntity::class,
         StatEntity::class,
         AccountEntity::class,
-        CategoryEntity::class
+        CategoryEntity::class,
+        CrossRateEntity::class
     ],
     version = AppDatabase.VERSION,
     exportSchema = false
@@ -30,12 +32,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun statDao(): StatDao
     abstract fun accountDao(): AccountDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun crossRateDao(): CrossRateDao
 
     companion object {
         const val DB_NAME = "finance.db"
 
         /** Текущая версия схемы (используется в @Database и записывается в бэкапы). */
-        const val VERSION = 6
+        const val VERSION = 7
 
         /**
          * v1 -> v2: создаёт таблицу статистики и заполняет её суммами
@@ -363,6 +366,24 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL(
                     "CREATE INDEX IF NOT EXISTS `index_transactions_accountId_currencyCode_categoryId_timestamp_id` " +
                         "ON `transactions` (`accountId`, `currencyCode`, `categoryId`, `timestamp`, `id`)"
+                )
+            }
+        }
+
+        /**
+         * v6 -> v7: таблица направленных кросс-курсов валют.
+         * Курс fromCode→toCode: 1 fromCode = rate toCode.
+         * Курс не симметричный: А→Б и Б→А хранятся независимо.
+         * Данные не заполняются — пользователь задаёт курсы вручную.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `cross_rates` (" +
+                        "`fromCode` TEXT NOT NULL, " +
+                        "`toCode` TEXT NOT NULL, " +
+                        "`rate` REAL NOT NULL, " +
+                        "PRIMARY KEY(`fromCode`, `toCode`))"
                 )
             }
         }
