@@ -209,6 +209,23 @@ class TransactionRepository @Inject constructor(private val db: DbHolder) {
         }
     }
 
+    // ---------- Кросс-курсы валют ----------
+
+    /** Чтение кросс-курса от [fromCode] к [toCode] (1 from = rate to). null — курс не задан. */
+    suspend fun getCrossRate(fromCode: String, toCode: String): Double? =
+        db.crossRateDao().getRate(fromCode, toCode)
+
+    /** Все курсы в [toCode] (USD→RUB, EUR→RUB, …) — карта fromCode → rate. */
+    suspend fun crossRatesFor(toCode: String): Map<String, Double> =
+        db.crossRateDao().ratesFor(toCode).associate { it.fromCode to it.rate }
+
+    /** Установка/замена кросс-курса fromCode→toCode (upsert, REPLACE). */
+    suspend fun setCrossRate(fromCode: String, toCode: String, rate: Double) {
+        db.crossRateDao().upsert(
+            com.example.financetracker.data.model.CrossRateEntity(fromCode, toCode, rate)
+        )
+    }
+
     /**
      * Прибавляет (sign = +1) или вычитает (sign = -1) вклад транзакции
      * в каждый из периодов (день/неделя/месяц/год) её валюты.
