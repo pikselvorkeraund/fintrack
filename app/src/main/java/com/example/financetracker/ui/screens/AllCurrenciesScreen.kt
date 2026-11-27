@@ -151,7 +151,7 @@ fun AllCurrenciesScreen(
                             TotalCard(
                                 total = state.totalBase!!,
                                 base = state.baseCurrency!!,
-                                missing = state.missingCount
+                                missing = state.missingCodes
                             )
                         }
                     }
@@ -229,7 +229,7 @@ private fun CurrencyCard(
                     // Пересчёт в основную валюту (скобки) — только если курс задан и валюта != основная
                     if (stat.baseRate != null && !isBase) {
                         Text(
-                            " (${fmtBase(stat.balance, baseCurrency!!)})",
+                            " (${fmtBase(stat.baseBalance!!, baseCurrency!!)})",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -295,7 +295,7 @@ private fun CurrencyCard(
 private fun TotalCard(
     total: Double,
     base: Currency,
-    missing: Int
+    missing: List<String>
 ) {
     val s = LocalStrings.current
     Card(
@@ -316,7 +316,7 @@ private fun TotalCard(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                if (missing > 0) {
+                if (missing.isNotEmpty()) {
                     Text(
                         s.missingRates(missing),
                         style = MaterialTheme.typography.labelSmall,
@@ -365,27 +365,6 @@ private fun RateDialog(
                 Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Направление
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "${s.rateFromLabel}: ${from.code} ${from.symbol}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        "→",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        "${s.rateToLabel}: ${to.code} ${to.symbol}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
                 // Поле ввода курса
                 OutlinedTextField(
                     value = input,

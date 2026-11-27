@@ -138,7 +138,7 @@ data class Strings(
     val rateExample: (String, Double, String) -> String,
     val rateUnknown: (String, String) -> String,
     val totalInBase: (String) -> String,
-    val missingRates: (Int) -> String,
+    val missingRates: (List<String>) -> String,
     val categories: Map<String, String>
 )
 
@@ -275,7 +275,7 @@ val StringsEn = Strings(
     rateExample = { sym, rate, toSym -> "1 $sym = ${String.format(Locale.US, "%.2f", rate)} $toSym" },
     rateUnknown = { sym, toSym -> "1 $sym = ? $toSym" },
     totalInBase = { base -> "Total in $base" },
-    missingRates = { n -> "$n without rate" },
+    missingRates = { codes -> if (codes.isEmpty()) "" else "No rate: ${codes.joinToString(", ")}" },
     categories = catsEn
 )
 
@@ -398,7 +398,7 @@ val StringsRu = Strings(
     rateExample = { sym, rate, toSym -> "1 $sym = $rate $toSym" },
     rateUnknown = { sym, toSym -> "1 $sym = ? $toSym" },
     totalInBase = { base -> "Итого в $base" },
-    missingRates = { n -> "Без курса: $n" },
+    missingRates = { codes -> if (codes.isEmpty()) "" else "Без курса: ${codes.joinToString(", ")}" },
     categories = catsRu
 )
 

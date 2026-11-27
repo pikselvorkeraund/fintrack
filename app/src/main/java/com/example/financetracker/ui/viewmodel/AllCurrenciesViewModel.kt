@@ -37,7 +37,7 @@ data class AllCurrenciesUiState(
     /** Итоговая сумма всех валют в основной валюте (только те, у которых задан курс). */
     val totalBase: Double? = null,
     /** Сколько валют без курса (показываются пометкой в итоговой строке). */
-    val missingCount: Int = 0,
+    val missingCodes: List<String> = emptyList(),
     val loading: Boolean = false
 )
 
@@ -108,14 +108,15 @@ class AllCurrenciesViewModel @Inject constructor(
                 val totalBase = if (base != null && convertible.isNotEmpty())
                     convertible.sumOf { it.baseBalance!! }
                 else null
-                val missingCount = stats.count { it.baseRate == null && it.currency != base }
+                val missingCodes = stats.filter { it.baseRate == null && it.currency != base }
+                    .map { it.currency.code }
 
                 _ui.update { prev ->
                     prev.copy(
                         currencies = stats,
                         baseCurrency = base,
                         totalBase = totalBase,
-                        missingCount = missingCount,
+                        missingCodes = missingCodes,
                         loading = false
                     )
                 }
